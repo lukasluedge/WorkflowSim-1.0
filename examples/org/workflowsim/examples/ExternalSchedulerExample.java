@@ -56,7 +56,7 @@ import org.workflowsim.utils.Parameters.ClassType;
  * @since WorkflowSim Toolkit 1.0
  * @date Apr 9, 2013
  */
-public class WorkflowSimBasicExample1 {
+public class ExternalSchedulerExample {
 
     protected static List<CondorVM> createVM(int userId, int vms) {
         //Creates a container to store VMs. This list is passed to the broker later
@@ -86,8 +86,20 @@ public class WorkflowSimBasicExample1 {
      * and one storage
      */
     public static void main(String[] args) {
+
+        org.cloudbus.cloudsim.Log.setDisabled(false);
+
+
+
         try {
-            // First step: Initialize the WorkflowSim package. 
+            java.io.PrintStream ps = new java.io.PrintStream(new java.io.FileOutputStream("simulation.log", false), true, "UTF-8");
+            org.cloudbus.cloudsim.Log.setOutput(ps);
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            // First step: Initialize the WorkflowSim package.
             /**
              * However, the exact number of vms may not necessarily be vmNum If
              * the data center or the host doesn't have sufficient resources the
@@ -97,7 +109,8 @@ public class WorkflowSimBasicExample1 {
             /**
              * Should change this based on real physical path
              */
-            String daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
+            String daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\dax\\Montage_100.xml";
+//            daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
             File daxFile = new File(daxPath);
             if (!daxFile.exists()) {
                 Log.printLine("Warning: Please replace daxPath with the physical path in your working environment!");
@@ -109,7 +122,7 @@ public class WorkflowSimBasicExample1 {
              * algorithm should be INVALID such that the planner would not
              * override the result of the scheduler
              */
-            Parameters.SchedulingAlgorithm sch_method = Parameters.SchedulingAlgorithm.MINMIN;
+            Parameters.SchedulingAlgorithm sch_method = Parameters.SchedulingAlgorithm.EXTERNAL;
             Parameters.PlanningAlgorithm pln_method = Parameters.PlanningAlgorithm.INVALID;
             ReplicaCatalog.FileSystem file_system = ReplicaCatalog.FileSystem.SHARED;
 

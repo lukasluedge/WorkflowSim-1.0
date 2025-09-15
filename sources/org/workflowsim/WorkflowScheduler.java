@@ -17,6 +17,8 @@ package org.workflowsim;
 
 import java.util.HashMap;
 import java.util.List;
+
+import org.CWSInterface.ExternalSchedulingAlgorithm;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.DatacenterBroker;
 import org.cloudbus.cloudsim.Log;
@@ -162,6 +164,9 @@ public class WorkflowScheduler extends DatacenterBroker {
                 break;
             case ROUNDROBIN:
                 algorithm = new RoundRobinSchedulingAlgorithm();
+                break;
+            case EXTERNAL:
+                algorithm = new ExternalSchedulingAlgorithm();
                 break;
             default:
                 algorithm = new StaticSchedulingAlgorithm();

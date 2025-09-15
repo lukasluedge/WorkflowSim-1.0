@@ -516,7 +516,7 @@ public class CloudletSchedulerSpaceShared extends CloudletScheduler {
 	 * @return the cloudlet waiting list
 	 */
 	@SuppressWarnings("unchecked")
-	protected <T extends ResCloudlet> List<T> getCloudletWaitingList() {
+    public <T extends ResCloudlet> List<T> getCloudletWaitingList() {
 		return (List<T>) cloudletWaitingList;
 	}
 
@@ -537,7 +537,7 @@ public class CloudletSchedulerSpaceShared extends CloudletScheduler {
 	 * @return the cloudlet exec list
 	 */
 	@SuppressWarnings("unchecked")
-	protected <T extends ResCloudlet> List<T> getCloudletExecList() {
+    public <T extends ResCloudlet> List<T> getCloudletExecList() {
 		return (List<T>) cloudletExecList;
 	}
 
