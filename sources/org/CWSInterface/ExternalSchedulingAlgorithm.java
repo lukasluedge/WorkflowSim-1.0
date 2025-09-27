@@ -5,23 +5,33 @@ import java.util.concurrent.TimeUnit;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.core.CloudSim;
+import org.cloudbus.cloudsim.core.SimEvent;
 import org.workflowsim.*;
 import org.workflowsim.scheduling.BaseSchedulingAlgorithm;
 import org.workflowsim.utils.ReplicaCatalog;
 
-/**
- * Data aware algorithm. Schedule a job to a vm that has most input data it requires.
- * It only works for a local environment.
- *
- * @author Weiwei Chen
- * @since WorkflowSim Toolkit 1.0
- * @date Apr 9, 2013
- */
+
 public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
-    public ExternalSchedulingAlgorithm() {
+    private SchedulingSnapshotWriter.ExternalSchedulerConfig cfg;
+    private static boolean schedulerRegistered = false;
+    private static final java.util.Set<Integer> reportedCompleted = new java.util.HashSet<>();
+    public SimEvent ev;
+    public static int alreadyDeleted = 0;
+    public static boolean first = true;
+    public static String execNameWithTimestamp = "my_exec"+'_' + System.currentTimeMillis();
+    public ExternalSchedulingAlgorithm(SimEvent ev) {
 
         super();
+        this.ev = ev;
+        cfg = new SchedulingSnapshotWriter.ExternalSchedulerConfig()
+                .withBaseUrl("http://localhost:8080")
+                .withExecution(execNameWithTimestamp)
+                .withStrategy("fifo-f")
+                .withLocationAware(false)
+                .withNamespace("default")
+                .withWorkDir("./MockClusterWorkspace")
+                .withDns("http://localhost:8080");
 
 
     }
@@ -41,27 +51,38 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
             return; // alle VMs sind busy
         }
 
+        List<Cloudlet> finishedCloudlets = Collections.emptyList();
+        List<Integer> finishedCloudletIDs = Collections.emptyList();
+        try {
+            var dstEntity = CloudSim.getEntity(ev.getDestination());
+
+            if (dstEntity instanceof WorkflowScheduler ws) {
+                finishedCloudlets = ws.getCloudletReceivedList();
+            }
+        } catch (Throwable ignored) {}
+
+        // Beispiel: IDs der fertigen Cloudlets loggen
+        if (!finishedCloudlets.isEmpty()) {
+            finishedCloudletIDs = finishedCloudlets.stream().map(Cloudlet::getCloudletId).toList();
+            System.out.println("[ExternalScheduling] Finished so far: " +
+                    finishedCloudlets.stream().map(Cloudlet::getCloudletId).toList());
+        }
+
+        int tmpSize = finishedCloudlets.size();
+        finishedCloudlets = finishedCloudlets.subList(alreadyDeleted, tmpSize);
+        alreadyDeleted = tmpSize;
 
 
-        SchedulingSnapshotWriter.ExternalSchedulerConfig cfg =
-                new SchedulingSnapshotWriter.ExternalSchedulerConfig()
-                        .withBaseUrl("http://localhost:8080")
-                        .withExecution("my-exec")
-                        .withStrategy("fifo-rr")
-                        .withLocationAware(false)
-                        .withNamespace("default")
-                        .withWorkDir("./MockClusterWorkspace")
-                        .withDns("http://localhost:8080");
+
 
         String file = SchedulingSnapshotWriter.nextSnapshotFileName();
 
-
-
         SchedulingSnapshotWriter.writeExternalSchedulerSteps(
-                file,
+                "traces/APICalls/" + file,
                 getVmList(),           // VMs -> Nodes
                 getCloudletList(),     // ready Cloudlets -> Tasks
                 getScheduledList(),    // scheduled Cloudlets (für vollständigen DAG)
+                finishedCloudlets,
                 cfg
         );
         Log.printLine(String.format("[Scheduling] t=%.3f -> Snapshot geschrieben: %s, numcloudlets: %d",
@@ -69,16 +90,27 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
 
 
-        HttpRunner runner = new HttpRunner(file);
-        runner.executeAllSmart();
 
-        TimeUnit.SECONDS.sleep(1);
+        // Initialize or reuse scheduler registration
+        HttpRunner localRunner = new HttpRunner("./traces/APICalls/" + file);
 
-        Map<Integer, String> result = runner.getNodeAssignmentsForTasks();
-        SchedulingSnapshotWriter.writeSchedulingDecisions("DESC_"+file, result);
+        if (!schedulerRegistered) {localRunner.registerScheduler(); schedulerRegistered = true;}
+        localRunner.createNodes();
+        localRunner.submitDagVertices();
+        localRunner.submitDagEdges();
+        localRunner.startBatch();
+//        localRunner.registerOutputFiles();
+        if (!finishedCloudletIDs.isEmpty()) localRunner.reportCompletedTasks();
+        localRunner.registerTasksSmart();
+        localRunner.endBatch();
 
-        runner.killExecution();
-        runner.resetCluster();
+
+
+        TimeUnit.MILLISECONDS.sleep(100);
+
+        Map<Integer, String> result = localRunner.getNodeAssignmentsForTasks();
+        SchedulingSnapshotWriter.writeSchedulingDecisions("./traces/DESC/DESC_" + file, result);
+
 
 
 //        int size = getCloudletList().size();
@@ -123,13 +155,6 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 for (Object oVm : vms) {
                     vm = (CondorVM) oVm;
                     if (vm.getId() == vmID) {
-                        if (vm.getState() == WorkflowSimTags.VM_STATUS_BUSY) {
-                            Log.printLine(String.format(
-                                    "[SimpleIdleFirst] Cloudlet %d -> VM %d (VM bereits BUSY)",
-                                    cl.getCloudletId(), vm.getId()
-                            ));
-                            throw new Exception("Scheduling error VM is busy");
-                        }
                         break;
                     }
                 }
@@ -140,17 +165,17 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 }
 
                 // Zuweisung: VM auf BUSY, Cloudlet VM setzen, geplante Liste erweitern
-                vm.setState(WorkflowSimTags.VM_STATUS_BUSY);
+//                vm.setState(WorkflowSimTags.VM_STATUS_BUSY);
                 cl.setVmId(vm.getId());
                 getScheduledList().add(cl);
 
                 Log.printLine(String.format(
-                        "[SimpleIdleFirst] Cloudlet %d -> VM %d (VM jetzt BUSY)",
+                        "[SimpleIdleFirst] Cloudlet %d -> VM %d",
                         cl.getCloudletId(), vm.getId()
                 ));
             }
         }
-        SchedulingSnapshotWriter.writeFullSnapshot("SNAP_"+file, cloudlets, vms, getScheduledList());
+        SchedulingSnapshotWriter.writeFullSnapshot("./traces/SNAP/SNAP_" + file, cloudlets, vms, getScheduledList());
     }
 }
 

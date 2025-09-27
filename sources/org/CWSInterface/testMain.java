@@ -12,11 +12,12 @@ public class testMain {
         runner.submitDagVertices();
         runner.submitDagEdges();
         runner.startBatch();
-        runner.registerTasks();
+        runner.registerOutputFiles();
+        runner.registerTasksSmart();
         runner.endBatch();
 
         TimeUnit.SECONDS.sleep(1);
-
+//
         Map<Integer, String> result = runner.getNodeAssignmentsForTasks();
         result.forEach((id, node) -> System.out.println("Task " + id + " → Node " + node));
 
@@ -24,6 +25,29 @@ public class testMain {
             System.out.printf("Task %d liegt auf Node: %s%n", entry.getKey(), entry.getValue());
         }
 
-        runner.killExecution();
+//        runner.resetCluster();
+//
+//        runner = new HttpRunner("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\scheduling-000002.json");
+//        runner.createNodes();
+//        runner.submitDagVertices();
+//        runner.submitDagEdges();
+//        runner.startBatch();
+//        runner.registerTasksSmart();
+//        runner.endBatch();
+//
+//        TimeUnit.SECONDS.sleep(1);
+//
+//        result = runner.getNodeAssignmentsForTasks();
+//        result.forEach((id, node) -> System.out.println("Task " + id + " → Node " + node));
+//
+//        for (Map.Entry<Integer, String> entry : result.entrySet()) {
+//            System.out.printf("Task %d liegt auf Node: %s%n", entry.getKey(), entry.getValue());
+//        }
+
+//        runner.resetCluster();
+
+
+
+
     }
 }

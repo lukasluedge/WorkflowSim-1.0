@@ -121,6 +121,20 @@ public class Task extends Cloudlet {
     }
 
     /**
+     * Sets memory requirement (in MB). Use -1 if unknown.
+     */
+    public void setMemoryRequirementMB(long memMB) {
+        super.setMemoryRequirementMb(memMB);
+    }
+
+    /**
+     * Gets memory requirement (in MB), or -1 if unspecified.
+     */
+    public long getMemoryRequirementMB() {
+        return super.getMemoryRequirementMB();
+    }
+
+    /**
      * Sets the priority of the task
      *
      * @param priority the priority

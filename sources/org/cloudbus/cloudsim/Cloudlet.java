@@ -91,6 +91,9 @@ public class Cloudlet {
 	/** The ToS for sending Cloudlet over the network. */
 	private int netToS;
 
+	/** Optional memory requirement in MB for scheduling purposes (WorkflowSim extension). */
+	private long memoryRequirementMB = -1;
+
 	// //////////////////////////////////////////
 	// Below are CONSTANTS attributes
 	/** The Cloudlet has been created and added to the CloudletList object. */
@@ -1463,4 +1466,17 @@ public class Cloudlet {
 		return getUtilizationModelBw().getUtilization(time);
 	}
 
+	/**
+	 * Sets optional memory requirement in MB for this Cloudlet. Use -1 if unspecified.
+	 */
+	public void setMemoryRequirementMb(final long memMB) {
+		this.memoryRequirementMB = memMB;
+	}
+
+	/**
+	 * Gets optional memory requirement in MB for this Cloudlet, or -1 if not set.
+	 */
+	public long getMemoryRequirementMB() {
+		return this.memoryRequirementMB;
+	}
 }

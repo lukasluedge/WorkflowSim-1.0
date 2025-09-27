@@ -137,7 +137,7 @@ public class WorkflowScheduler extends DatacenterBroker {
      * @param name the SchedulingAlgorithm name
      * @return the algorithm that extends BaseSchedulingAlgorithm
      */
-    private BaseSchedulingAlgorithm getScheduler(SchedulingAlgorithm name) {
+    private BaseSchedulingAlgorithm getScheduler(SchedulingAlgorithm name, SimEvent ev) {
         BaseSchedulingAlgorithm algorithm;
 
         // choose which algorithm to use. Make sure you have add related enum in
@@ -166,7 +166,7 @@ public class WorkflowScheduler extends DatacenterBroker {
                 algorithm = new RoundRobinSchedulingAlgorithm();
                 break;
             case EXTERNAL:
-                algorithm = new ExternalSchedulingAlgorithm();
+                algorithm = new ExternalSchedulingAlgorithm(ev);
                 break;
             default:
                 algorithm = new StaticSchedulingAlgorithm();
@@ -242,7 +242,7 @@ public class WorkflowScheduler extends DatacenterBroker {
      */
     protected void processCloudletUpdate(SimEvent ev) {
 
-        BaseSchedulingAlgorithm scheduler = getScheduler(Parameters.getSchedulingAlgorithm());
+        BaseSchedulingAlgorithm scheduler = getScheduler(Parameters.getSchedulingAlgorithm(), ev);
         scheduler.setCloudletList(getCloudletList());
         scheduler.setVmList(getVmsCreatedList());
 

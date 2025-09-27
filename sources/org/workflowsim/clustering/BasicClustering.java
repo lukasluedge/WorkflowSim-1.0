@@ -169,6 +169,8 @@ public class BasicClustering implements ClusteringInterface {
             /// a bug of cloudsim makes it final of input file size and output file size
             Job job = new Job(idIndex, length/*, inputFileSize, outputFileSize*/);
             job.setClassType(ClassType.COMPUTE.value);
+            int maxPEs = 1;
+            long maxMemMB = -1;
             for (Task task : taskList) {
                 length += task.getCloudletLength();
 
@@ -177,6 +179,16 @@ public class BasicClustering implements ClusteringInterface {
                 depth = task.getDepth();
                 List<FileItem> fileList = task.getFileList();
                 job.getTaskList().add(task);
+
+                // Aggregate resource requirements
+                if (task.getNumberOfPes() > maxPEs) {
+                    maxPEs = task.getNumberOfPes();
+                }
+                long tMem = task.getMemoryRequirementMB();
+                if (tMem > maxMemMB) {
+                    maxMemMB = tMem;
+                }
+
 
                 getTask2Job().put(task, job);
                 for (FileItem file : fileList) {
@@ -204,6 +216,12 @@ public class BasicClustering implements ClusteringInterface {
             job.setUserId(userId);
             job.setDepth(depth);
             job.setPriority(priority);
+            // Set aggregated resource requirements on the resulting Job (Cloudlet)
+            job.setNumberOfPes(maxPEs);
+            if (maxMemMB >= 0) {
+                job.setMemoryRequirementMB(maxMemMB);
+            }
+
 
             idIndex++;
             getJobList().add(job);

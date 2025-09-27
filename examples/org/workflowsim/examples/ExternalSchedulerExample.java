@@ -1,12 +1,12 @@
 /**
  * Copyright 2012-2013 University Of Southern California
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- *
+ * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -64,10 +64,10 @@ public class ExternalSchedulerExample {
 
         //VM Parameters
         long size = 10000; //image size (MB)
-        int ram = 512; //vm memory (MB)
+        int ram = 1024 * 1024; //vm memory (MB)
         int mips = 1000;
         long bw = 1000;
-        int pesNumber = 1; //number of cpus
+        int pesNumber = 32; //number of cpus
         String vmm = "Xen"; //VMM name
 
         //create VMs
@@ -105,7 +105,7 @@ public class ExternalSchedulerExample {
              * the data center or the host doesn't have sufficient resources the
              * exact vmNum would be smaller than that. Take care.
              */
-            int vmNum = 20;//number of vms;
+            int vmNum = 8;//number of vms;
             /**
              * Should change this based on real physical path
              */
@@ -202,11 +202,11 @@ public class ExternalSchedulerExample {
             int mips = 2000;
             // 3. Create PEs and add these into the list.
             //for a quad-core machine, a list of 4 PEs is required:
-            peList1.add(new Pe(0, new PeProvisionerSimple(mips))); // need to store Pe id and MIPS Rating
-            peList1.add(new Pe(1, new PeProvisionerSimple(mips)));
+            for (int j = 0; j < 32; j++)
+            peList1.add(new Pe(j, new PeProvisionerSimple(mips))); // need to store Pe id and MIPS Rating
 
             int hostId = 0;
-            int ram = 2048; //host memory (MB)
+            int ram = 1024*1024; //host memory (MB)
             long storage = 1000000; //host storage
             int bw = 10000;
             hostList.add(

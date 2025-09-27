@@ -7,7 +7,6 @@ import java.net.http.HttpResponse;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,17 +34,19 @@ public class HttpRunner {
     }
 
     // Alle geladenen Schritte
-    public Step registerSchedulerStep;
+    private Step registerSchedulerStep;
     public List<Step> createNodesSteps = new ArrayList<>();
-    public Step dagVerticesStep;
-    public Step dagEdgesStep;
-    public Step startBatchStep;
-    public List<Step> registerTasksSteps = new ArrayList<>();
-    public Step registerTasksBatchStep;
-    public Step endBatchStep;
-    public Step killExecutionStep;
-    public Step resetCluster;
-    public Step envelopedBatchStep;
+    private Step dagVerticesStep;
+    private Step dagEdgesStep;
+    private Step startBatchStep;
+    private List<Step> registerTasksSteps = new ArrayList<>();
+    private Step registerTasksBatchStep;
+    private List<Step> registerOutputFilesStep = new ArrayList<>();
+    private Step endBatchStep;
+    private Step killExecutionStep;
+    private Step resetCluster;
+    private Step envelopedBatchStep;
+    private Step reportCompletedTasksStep;
     private String dns;
 
     // Konstruktor: lädt und parst die JSON-Datei
@@ -61,22 +62,24 @@ public class HttpRunner {
         dagVerticesStep = parseStep(steps.path("submitDAG").path("vertices"));
         dagEdgesStep = parseStep(steps.path("submitDAG").path("edges"));
         startBatchStep = parseStep(steps.path("startBatch"));
-        for (JsonNode regTask : steps.path("registerTasks")) {
-            registerTasksSteps.add(parseStep(regTask));
+        reportCompletedTasksStep = parseStep(steps.path("reportCompletedTasks"));
+        for (JsonNode nodeStep : steps.path("registerOutputFiles")) {
+            registerOutputFilesStep.add(parseStep(nodeStep));
         }
-        // optional batch step
-        JsonNode batchNode = steps.get("registerTasksBatch");
-        if (batchNode != null && !batchNode.isMissingNode() && !batchNode.isNull()) {
-            registerTasksBatchStep = parseStep(batchNode);
+        // registerTasks can now be a single object (POST /tasks with array body) instead of an array of individual requests
+        JsonNode registerTasksNode = steps.get("registerTasks");
+        if (registerTasksNode != null && !registerTasksNode.isMissingNode() && !registerTasksNode.isNull()) {
+            if (registerTasksNode.isArray()) {
+                for (JsonNode regTask : registerTasksNode) {
+                    registerTasksSteps.add(parseStep(regTask));
+                }
+            } else {
+                registerTasksBatchStep = parseStep(registerTasksNode);
+            }
         }
         endBatchStep = parseStep(steps.path("endBatch"));
         killExecutionStep = parseStep(steps.path("killExecution"));
         resetCluster = parseStep(steps.path("resetCluster"));
-        // optional envelope step
-        JsonNode envNode = steps.get("envelopedBatch");
-        if (envNode != null && !envNode.isMissingNode() && !envNode.isNull()) {
-            envelopedBatchStep = parseStep(envNode);
-        }
     }
 
     private Step parseStep(JsonNode node) {
@@ -124,17 +127,19 @@ public class HttpRunner {
         for (Step s : createNodesSteps) out.add(doRequest(s));
         return out;
     }
-    public String submitDagVertices() throws Exception { return doRequest(dagVerticesStep); }
-    public String submitDagEdges() throws Exception { return doRequest(dagEdgesStep); }
+    public void submitDagVertices() throws Exception { doRequest(dagVerticesStep); }
+    public void submitDagEdges() throws Exception { doRequest(dagEdgesStep); }
     public String startBatch() throws Exception { return doRequest(startBatchStep); }
+    public String reportCompletedTasks() throws Exception { return reportCompletedTasksStep == null ? null : doRequest(reportCompletedTasksStep); }
+    public List<String> registerOutputFiles() throws Exception {
+        List<String> out = new ArrayList<>();
+        for (Step s : registerOutputFilesStep) out.add(doRequest(s));
+        return out;
+    }
     public List<String> registerTasks() throws Exception {
         List<String> out = new ArrayList<>();
         for (Step s : registerTasksSteps) out.add(doRequest(s));
         return out;
-    }
-    public String registerTasksBatch() throws Exception {
-        if (registerTasksBatchStep == null) throw new IllegalStateException("No registerTasksBatch step defined");
-        return doRequest(registerTasksBatchStep);
     }
     public List<String> registerTasksSmart() throws Exception {
         if (registerTasksBatchStep != null) {
@@ -145,22 +150,6 @@ public class HttpRunner {
         return registerTasks();
     }
     public String endBatch() throws Exception { return doRequest(endBatchStep); }
-
-    // Execute everything in as few requests as possible: if envelope present, do just that
-    public void executeAllSmart() throws Exception {
-        if (envelopedBatchStep != null) {
-            doRequest(envelopedBatchStep);
-            return;
-        }
-        // fallback to the existing minimal sequence (prefers task batch if available)
-        registerScheduler();
-        createNodes();
-        submitDagVertices();
-        submitDagEdges();
-        startBatch();
-        registerTasksSmart();
-        endBatch();
-    }
 
     /**
      * Fragt für jede Task-ID die zugewiesene Node ab.
@@ -213,12 +202,11 @@ public class HttpRunner {
                 result.put(id, node);
             }
         }
+
+
         return result;
     }
     public String killExecution() throws Exception { return doRequest(killExecutionStep); }
     public String resetCluster() throws Exception { return doRequest(resetCluster); }
 
-    // Beispiel-Nutzung:
-    // SimpleScenarioHttpRunner runner = new SimpleScenarioHttpRunner("scenario.json");
-    // runner.registerScheduler();
 }

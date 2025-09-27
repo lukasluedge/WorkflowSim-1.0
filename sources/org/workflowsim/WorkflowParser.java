@@ -167,6 +167,8 @@ public final class WorkflowParser {
                         length *= Parameters.getRuntimeScale();
                         List<Element> fileList = node.getChildren();
                         List<FileItem> mFileList = new ArrayList<>();
+                        int numPEs = 1;
+                        long memory = 1024;
                         for (Element file : fileList) {
                             if (file.getName().toLowerCase().equals("uses")) {
                                 String fileName = file.getAttributeValue("name");//DAX version 3.3
@@ -241,6 +243,26 @@ public final class WorkflowParser {
                                 mFileList.add(tFile);
 
                             }
+                            if (file.getName().equalsIgnoreCase("profile")) {
+                                String key = file.getAttributeValue("key");
+                                if (key == null) {
+                                    Log.printLine("Error in parsing xml, key is null");
+                                } else {
+                                    if (key.equals("cores")) {
+                                        try {
+                                            numPEs = Integer.parseInt(file.getText().trim());
+                                        } catch (NumberFormatException e) {
+                                            Log.printLine("Error parsing cores value: " + file.getText());
+                                        }
+                                    } else if (key.equals("memory")) {
+                                        try {
+                                            memory = Integer.parseInt(file.getText().trim());
+                                        } catch (NumberFormatException e) {
+                                            Log.printLine("Error parsing memory value: " + file.getText());
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Task task;
                         //In case of multiple workflow submission. Make sure the jobIdStartsFrom is consistent.
@@ -255,6 +277,8 @@ public final class WorkflowParser {
                             task.addRequiredFile(file.getName());
                         }
                         task.setFileList(mFileList);
+                        task.setNumberOfPes(numPEs);
+                        task.setMemoryRequirementMB(memory);
                         this.getTaskList().add(task);
 
                         /**
