@@ -21,6 +21,8 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.LinkedList;
 import java.util.List;
+
+import org.CWSInterface.HttpRunner;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.CloudletSchedulerSpaceShared;
 import org.cloudbus.cloudsim.DatacenterCharacteristics;
@@ -88,11 +90,14 @@ public class ExternalSchedulerExample {
     public static void main(String[] args) {
 
         org.cloudbus.cloudsim.Log.setDisabled(false);
-
+        String daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\dax\\Montage_100.xml";
+        daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
+        daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\rnaseq_real.xml";
 
 
         try {
-            java.io.PrintStream ps = new java.io.PrintStream(new java.io.FileOutputStream("simulation.log", false), true, "UTF-8");
+            String runName = daxPath.split("\\\\")[daxPath.split("\\\\").length - 1].replace(".xml", "");
+            java.io.PrintStream ps = new java.io.PrintStream(new java.io.FileOutputStream("simulation_" + runName + System.currentTimeMillis() + ".log", false), true, "UTF-8");
             org.cloudbus.cloudsim.Log.setOutput(ps);
         } catch (java.io.IOException e) {
             e.printStackTrace();
@@ -109,8 +114,7 @@ public class ExternalSchedulerExample {
             /**
              * Should change this based on real physical path
              */
-            String daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\dax\\Montage_100.xml";
-//            daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
+
             File daxFile = new File(daxPath);
             if (!daxFile.exists()) {
                 Log.printLine("Warning: Please replace daxPath with the physical path in your working environment!");
@@ -182,6 +186,8 @@ public class ExternalSchedulerExample {
             List<Job> outputList0 = wfEngine.getJobsReceivedList();
             CloudSim.stopSimulation();
             printJobList(outputList0);
+            HttpRunner localRunner = new HttpRunner("./traces/APICalls/" + "scheduling-000001.json");
+            localRunner.resetCluster();
         } catch (Exception e) {
             Log.printLine("The simulation has been terminated due to an unexpected error");
         }

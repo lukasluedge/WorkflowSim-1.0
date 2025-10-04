@@ -2,10 +2,8 @@ package org.CWSInterface;
 
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Log;
-import org.workflowsim.CondorVM;
-import org.workflowsim.FileItem;
-import org.workflowsim.Job;
-import org.workflowsim.WorkflowSimTags;
+import org.workflowsim.*;
+import org.workflowsim.utils.Parameters;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -387,9 +385,10 @@ public final class SchedulingSnapshotWriter {
     public static void writeExternalSchedulerSteps(
             String fileName,
             List<?> vms,
-            List<?> readyCloudlets,
+            List<Cloudlet> readyCloudlets,
             List<?> scheduled,
             List<Cloudlet> finishedCloudlets,
+            List<Cloudlet> allFinishedCloudlets,
             ExternalSchedulerConfig cfg
     ) {
         try {
@@ -498,6 +497,17 @@ public final class SchedulingSnapshotWriter {
                 for (Object o : readyCloudlets) {
                     if (!(o instanceof Cloudlet cl)) continue;
                     int id = cl.getCloudletId();
+                    List<FileItem> inputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.INPUT)).toList();
+                    StringBuilder Files = new StringBuilder();
+                    for (FileItem item : inputFiles) {
+                        Files.append("          {\n");
+                        Files.append("            \"name\": \"").append(item.getName()).append("\",\n");
+                        Files.append("            \"value\": {\n");
+                        Files.append("              \"sourceObj\": \"").append("/data").append("/").append(item.getName()).append("\",\n");
+                        Files.append("              \"sourcePath\": \"").append("/data").append("/").append(item.getName()).append("\"\n");
+                        Files.append("            }\n");
+                        Files.append("          }").append(item.equals(inputFiles.getLast()) ? "" : ",").append("\n");
+                    }
                     String taskName = "Job_" + id;
                     String runName = "cl_" + id;
                     double cpus = Math.max(1, cl.getNumberOfPes());
@@ -510,7 +520,12 @@ public final class SchedulingSnapshotWriter {
                             "\"workDir\":" + jsonString(cfg.workDir) + "," +
                             "\"cpus\":" + String.format(java.util.Locale.ROOT, "%.1f", cpus) + "," +
                             "\"memoryInBytes\":" + memBytes + "," +
-                            "\"repetition\":0" +
+                            "\"repetition\":0," +
+                            "\"inputs\": {\n" +
+                            "        \"fileInputs\": [\n" +
+                                Files +
+                            "        ]\n" +
+                            "      }" +
                             "}";
                     taskBodiesJson.add(body);
                     tasksInBatch++;
@@ -524,19 +539,44 @@ public final class SchedulingSnapshotWriter {
                 for (Object o : finishedCloudlets) {
                     if (!(o instanceof Cloudlet cl)) continue;
                     int VMid = cl.getVmId();
-                    int id = cl.getCloudletId();
                     String VMName = "vm-" + VMid;
-                    String runName = "cl_" + id;
-                    String path = "/sim/" + cfg.execution + "/" + runName + "/out/t_" + id + ".dat";
-                    String body = "{" +
-                            "\"path\": \"" + path + "\"," +
-                            "\"size\": " + cl.getCloudletOutputSize() + "," +
-                            "\"timestamp\": " + System.currentTimeMillis() + "," +
-                            "\"locationWrapperID\": " + -1 +
-                            "}";
-                    String url = cfg.baseUrl + "/v1/file/" + cfg.execution + "/location/add/" + VMName;
-                    fileBodies.add(body);
-                    fileUrls.add(url);
+                    List<FileItem> outputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.OUTPUT)).toList();
+                    for (FileItem item : outputFiles) {
+                        String body = "{" +
+                                "\"path\": \"" + "/data" + "/" + item.getName() + "\"," +
+                                "\"size\": " + item.getSize() + "," +
+                                "\"timestamp\": " + System.currentTimeMillis() + "," +
+                                "\"locationWrapperID\": " + -1 + "}";
+                        String url = cfg.baseUrl + "/v1/file/" + cfg.execution + "/location/add/" + VMName;
+                        fileBodies.add(body);
+                        fileUrls.add(url);
+                    }
+                }
+            }
+            Set<FileItem> alreadyPostedFiles = new HashSet<>();
+            for (Cloudlet cl : allFinishedCloudlets) {
+                if (cl == null) continue;
+                List<FileItem> outputFiles = ((Task) cl).getFileList();
+                alreadyPostedFiles.addAll(outputFiles);
+            }
+            if (readyCloudlets != null && !fileBodies.isEmpty()) {
+                for (Cloudlet cl : readyCloudlets) {
+                    List<FileItem> inputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.INPUT)).toList();
+
+                    for (FileItem item : inputFiles) {
+                        if (alreadyPostedFiles.contains(item)) {
+                            System.out.println("File " + item.getName() + " already posted, skipping...");
+                            continue;
+                        }
+                        String body = "{" +
+                                "\"path\": \"" + "/data" + "/" + item.getName() + "\"," +
+                                "\"size\": " + item.getSize() + "," +
+                                "\"timestamp\": " + System.currentTimeMillis() + "," +
+                                "\"locationWrapperID\": " + -1 + "}";
+                        String url = cfg.baseUrl + "/v1/file/" + cfg.execution + "/location/add";
+                        fileBodies.add(body);
+                        fileUrls.add(url);
+                    }
                 }
             }
 

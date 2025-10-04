@@ -27,14 +27,32 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         cfg = new SchedulingSnapshotWriter.ExternalSchedulerConfig()
                 .withBaseUrl("http://localhost:8080")
                 .withExecution(execNameWithTimestamp)
-                .withStrategy("fifo-f")
-                .withLocationAware(false)
+                .withStrategy("wow")
+                .withLocationAware(true)
                 .withNamespace("default")
                 .withWorkDir("./MockClusterWorkspace")
                 .withDns("http://localhost:8080");
 
 
     }
+    public static final class FileInfo {
+        public final String name;
+        public final String ioType;
+        public final Long sizeBytes; // kann null sein, wenn unbekannt
+        public final Integer sizeMB; // kann null sein, wenn unbekannt
+        public final List<String> locations;
+
+        public FileInfo(String name, String ioType, Long sizeBytes, Integer sizeMB, List<String> locations) {
+            this.name = name;
+            this.ioType = ioType;
+            this.sizeBytes = sizeBytes;
+            this.sizeMB = sizeMB;
+            this.locations = locations == null ? Collections.emptyList() : locations;
+        }
+    }
+
+
+
 
     @Override
     public void run() throws Exception {
@@ -52,25 +70,24 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         }
 
         List<Cloudlet> finishedCloudlets = Collections.emptyList();
+        List<Cloudlet> allFinishedCloudlets = Collections.emptyList();
         List<Integer> finishedCloudletIDs = Collections.emptyList();
         try {
             var dstEntity = CloudSim.getEntity(ev.getDestination());
 
             if (dstEntity instanceof WorkflowScheduler ws) {
-                finishedCloudlets = ws.getCloudletReceivedList();
+                allFinishedCloudlets = ws.getCloudletReceivedList();
             }
         } catch (Throwable ignored) {}
 
         // Beispiel: IDs der fertigen Cloudlets loggen
-        if (!finishedCloudlets.isEmpty()) {
-            finishedCloudletIDs = finishedCloudlets.stream().map(Cloudlet::getCloudletId).toList();
-            System.out.println("[ExternalScheduling] Finished so far: " +
-                    finishedCloudlets.stream().map(Cloudlet::getCloudletId).toList());
+        if (!allFinishedCloudlets.isEmpty()) {
+            finishedCloudletIDs = allFinishedCloudlets.stream().map(Cloudlet::getCloudletId).toList();
+            System.out.println("[ExternalScheduling] Finished so far: " + finishedCloudletIDs);
         }
 
-        int tmpSize = finishedCloudlets.size();
-        finishedCloudlets = finishedCloudlets.subList(alreadyDeleted, tmpSize);
-        alreadyDeleted = tmpSize;
+        finishedCloudlets = allFinishedCloudlets.subList(alreadyDeleted, allFinishedCloudlets.size());
+        alreadyDeleted = allFinishedCloudlets.size();
 
 
 
@@ -83,6 +100,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 getCloudletList(),     // ready Cloudlets -> Tasks
                 getScheduledList(),    // scheduled Cloudlets (für vollständigen DAG)
                 finishedCloudlets,
+                allFinishedCloudlets,
                 cfg
         );
         Log.printLine(String.format("[Scheduling] t=%.3f -> Snapshot geschrieben: %s, numcloudlets: %d",
@@ -98,15 +116,15 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         localRunner.createNodes();
         localRunner.submitDagVertices();
         localRunner.submitDagEdges();
+        localRunner.registerOutputFiles();
         localRunner.startBatch();
-//        localRunner.registerOutputFiles();
         if (!finishedCloudletIDs.isEmpty()) localRunner.reportCompletedTasks();
         localRunner.registerTasksSmart();
         localRunner.endBatch();
 
 
 
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(500);
 
         Map<Integer, String> result = localRunner.getNodeAssignmentsForTasks();
         SchedulingSnapshotWriter.writeSchedulingDecisions("./traces/DESC/DESC_" + file, result);
@@ -168,6 +186,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 //                vm.setState(WorkflowSimTags.VM_STATUS_BUSY);
                 cl.setVmId(vm.getId());
                 getScheduledList().add(cl);
+//                System.out.println(cl.getRequiredFiles());
 
                 Log.printLine(String.format(
                         "[SimpleIdleFirst] Cloudlet %d -> VM %d",
@@ -175,7 +194,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 ));
             }
         }
-        SchedulingSnapshotWriter.writeFullSnapshot("./traces/SNAP/SNAP_" + file, cloudlets, vms, getScheduledList());
+//        SchedulingSnapshotWriter.writeFullSnapshot("./traces/SNAP/SNAP_" + file, cloudlets, vms, getScheduledList());
     }
 }
 
