@@ -35,21 +35,6 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
 
     }
-    public static final class FileInfo {
-        public final String name;
-        public final String ioType;
-        public final Long sizeBytes; // kann null sein, wenn unbekannt
-        public final Integer sizeMB; // kann null sein, wenn unbekannt
-        public final List<String> locations;
-
-        public FileInfo(String name, String ioType, Long sizeBytes, Integer sizeMB, List<String> locations) {
-            this.name = name;
-            this.ioType = ioType;
-            this.sizeBytes = sizeBytes;
-            this.sizeMB = sizeMB;
-            this.locations = locations == null ? Collections.emptyList() : locations;
-        }
-    }
 
 
 
@@ -83,7 +68,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         // Beispiel: IDs der fertigen Cloudlets loggen
         if (!allFinishedCloudlets.isEmpty()) {
             finishedCloudletIDs = allFinishedCloudlets.stream().map(Cloudlet::getCloudletId).toList();
-            System.out.println("[ExternalScheduling] Finished so far: " + finishedCloudletIDs);
+//            System.out.println("[ExternalScheduling] Finished so far: " + finishedCloudletIDs);
         }
 
         finishedCloudlets = allFinishedCloudlets.subList(alreadyDeleted, allFinishedCloudlets.size());
@@ -92,7 +77,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
 
 
-        String file = SchedulingSnapshotWriter.nextSnapshotFileName();
+        String file = SchedulingSnapshotWriter.nextSnapshotFileName(false);
 
         SchedulingSnapshotWriter.writeExternalSchedulerSteps(
                 "traces/APICalls/" + file,
@@ -124,7 +109,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
 
 
-        TimeUnit.MILLISECONDS.sleep(500);
+        TimeUnit.MILLISECONDS.sleep(200);
 
         Map<Integer, String> result = localRunner.getNodeAssignmentsForTasks();
         SchedulingSnapshotWriter.writeSchedulingDecisions("./traces/DESC/DESC_" + file, result);
@@ -194,7 +179,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 ));
             }
         }
-//        SchedulingSnapshotWriter.writeFullSnapshot("./traces/SNAP/SNAP_" + file, cloudlets, vms, getScheduledList());
+        SchedulingSnapshotWriter.writeFullSnapshot("./traces/SNAP/SNAP_" + file, cloudlets, vms, getScheduledList());
     }
 }
 

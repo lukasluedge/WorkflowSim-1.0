@@ -5,32 +5,35 @@ import org.cloudbus.cloudsim.Log;
 import org.workflowsim.*;
 import org.workflowsim.utils.Parameters;
 
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.stream.Collectors;
+
 
 public final class SchedulingSnapshotWriter {
 
-    private SchedulingSnapshotWriter() {}
+    private SchedulingSnapshotWriter() {
+    }
 
     private static long snapshotCounter = 0;
 
-    public static synchronized String nextSnapshotFileName() {
-        snapshotCounter++;
+    public static synchronized String nextSnapshotFileName(boolean persistent) {
+        if (persistent) snapshotCounter++;
         return String.format("scheduling-%06d.json", snapshotCounter);
     }
+
     public static void writeSchedulingDecisions(String fileName, Map<Integer, String> allocation) {
         try {
             StringBuilder sb = new StringBuilder(128_000);
-            double now = org.cloudbus.cloudsim.core.CloudSim.clock();
             //create a text file that stores the contents of the Map<integer, String> allocation
             for (Map.Entry<Integer, String> entry : allocation.entrySet()) {
                 sb.append(entry.getKey()).append(" ").append(entry.getValue()).append("\n");
             }
             Files.writeString(Path.of(fileName), sb.toString(), StandardCharsets.UTF_8);
-        } catch (Exception e) {}
+        } catch (Exception ignored) {
+        }
     }
 
     public static void writeFullSnapshot(String fileName, List<?> readyCloudlets, List<?> vms, List<?> scheduled) {
@@ -89,7 +92,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
 
                 // Eltern
                 try {
@@ -103,7 +107,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
 
             // Kanten Parent->Child deduplizieren
@@ -121,7 +126,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
 
             // JSON erzeugen
@@ -144,7 +150,7 @@ public final class SchedulingSnapshotWriter {
 
                     double cpuUtil = cl.getUtilizationOfCpu(now);
                     double ramUtil = cl.getUtilizationOfRam(now);
-                    double bwUtil  = cl.getUtilizationOfBw(now);
+                    double bwUtil = cl.getUtilizationOfBw(now);
 
                     sb.append("    {\n");
                     sb.append("      \"cloudletId\": ").append(cl.getCloudletId()).append(",\n");
@@ -350,30 +356,67 @@ public final class SchedulingSnapshotWriter {
         public String copyStrategy = "daemon"; // optional
         public String memoryPredictor = "";    // optional, meist leer
         public String localWorkDir = "/tmp";   // optional
-        private boolean initScheduler = true;
-        // Optional: IDs von Tasks, die seit dem letzten Scheduler-Aufruf abgeschlossen wurden
-        public java.util.List<Integer> completedSinceLast = java.util.Collections.emptyList();
+        private static Set<String> submittedFiles = new HashSet<>();
 
         public ExternalSchedulerConfig() {
         }
 
-        public ExternalSchedulerConfig withBaseUrl(String v) { this.baseUrl = v; return this; }
-        public ExternalSchedulerConfig withExecution(String v) { this.execution = v; return this; }
-        public ExternalSchedulerConfig withStrategy(String v) { this.strategy = v; return this; }
-        public ExternalSchedulerConfig withLocationAware(boolean v) { this.locationAware = v; return this; }
-        public ExternalSchedulerConfig withNamespace(String v) { this.namespace = v; return this; }
-        public ExternalSchedulerConfig withWorkDir(String v) { this.workDir = v; return this; }
-        public ExternalSchedulerConfig withDns(String v) { this.dns = v; return this; }
-        public ExternalSchedulerConfig withCopyStrategy(String v) { this.copyStrategy = v; return this; }
-        public ExternalSchedulerConfig withMemoryPredictor(String v) { this.memoryPredictor = v; return this; }
-        public ExternalSchedulerConfig withLocalWorkDir(String v) { this.localWorkDir = v; return this; }
+        public ExternalSchedulerConfig withBaseUrl(String v) {
+            this.baseUrl = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withExecution(String v) {
+            this.execution = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withStrategy(String v) {
+            this.strategy = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withLocationAware(boolean v) {
+            this.locationAware = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withNamespace(String v) {
+            this.namespace = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withWorkDir(String v) {
+            this.workDir = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withDns(String v) {
+            this.dns = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withCopyStrategy(String v) {
+            this.copyStrategy = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withMemoryPredictor(String v) {
+            this.memoryPredictor = v;
+            return this;
+        }
+
+        public ExternalSchedulerConfig withLocalWorkDir(String v) {
+            this.localWorkDir = v;
+            return this;
+        }
 
     }
 
     /**
      * Erzeugt ein JSON mit allen Schritten und den zugehörigen HTTP-Methoden/URLs/Bodys,
      * sodass dein externes Python-Skript diese Befehle 1:1 ausführen könnte.
-     *
+     * <p>
      * Schritte:
      * - registerScheduler (POST)
      * - createNodes (POST je VM)
@@ -384,7 +427,7 @@ public final class SchedulingSnapshotWriter {
      */
     public static void writeExternalSchedulerSteps(
             String fileName,
-            List<?> vms,
+            List<CondorVM> vms,
             List<Cloudlet> readyCloudlets,
             List<?> scheduled,
             List<Cloudlet> finishedCloudlets,
@@ -424,7 +467,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
                 try {
                     List<?> parents = cur.getParentList();
                     if (parents != null) {
@@ -435,7 +479,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
 
             // Vertices/Edges im gewünschten schlanken Format
@@ -460,7 +505,8 @@ public final class SchedulingSnapshotWriter {
                             }
                         }
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
 
             // 2) Nodes aus VMs erzeugen
@@ -469,15 +515,14 @@ public final class SchedulingSnapshotWriter {
             double avgRamMiB = 0.0;
             int vmCount = 0;
             if (vms != null) {
-                for (Object o : vms) {
-                    if (!(o instanceof CondorVM vm)) continue;
+                for (CondorVM vm : vms) {
                     vmCount++;
-                    avgRamMiB += (double) vm.getRam() /vm.getNumberOfPes();
+                    avgRamMiB += (double) vm.getRam() / vm.getNumberOfPes();
                     String name = "vm-" + vm.getId();
                     // RAM in Gi abrunden
                     int ramMB = vm.getRam();
                     int allocRam = vm.getCurrentAllocatedRam();
-                    int effectiveRam = ramMB-allocRam;
+                    int effectiveRam = ramMB - allocRam;
                     String memStr = allocRam + "Mi";
                     String cpuStr = String.valueOf(vm.getNumberOfPes());
                     if (vm.getState() != WorkflowSimTags.VM_STATUS_BUSY) {
@@ -487,16 +532,18 @@ public final class SchedulingSnapshotWriter {
                 }
             }
             if (vmCount > 0) avgRamMiB /= vmCount;
-            long defaultTaskMemBytes = (long) Math.max(1, Math.round(avgRamMiB/2)) * 1024L * 1024L;
+            long defaultTaskMemBytes = (long) Math.max(1, Math.round(avgRamMiB / 2)) * 1024L * 1024L;
 
             // 3) Tasks aus readyCloudlets ableiten (jetzt als ein gemeinsamer POST auf /v1/scheduler/{execution}/tasks)
             List<String> tasksJson = new ArrayList<>(); // kept for structure, but we will use a single batch step below
             List<String> taskBodiesJson = new ArrayList<>();
             int tasksInBatch = 0;
             if (readyCloudlets != null) {
-                for (Object o : readyCloudlets) {
-                    if (!(o instanceof Cloudlet cl)) continue;
+                for (Cloudlet cl : readyCloudlets) {
                     int id = cl.getCloudletId();
+//                    if (id == 1077) {
+//                        System.out.println(((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.INPUT)).toList());
+//                    }
                     List<FileItem> inputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.INPUT)).toList();
                     StringBuilder Files = new StringBuilder();
                     for (FileItem item : inputFiles) {
@@ -523,7 +570,7 @@ public final class SchedulingSnapshotWriter {
                             "\"repetition\":0," +
                             "\"inputs\": {\n" +
                             "        \"fileInputs\": [\n" +
-                                Files +
+                            Files +
                             "        ]\n" +
                             "      }" +
                             "}";
@@ -532,16 +579,19 @@ public final class SchedulingSnapshotWriter {
                 }
             }
 
-            //register the output files for the completed tasks
+            //register the output files for the completed tasks and input files if they come from origin nodes
             List<String> fileBodies = new ArrayList<>();
             List<String> fileUrls = new ArrayList<>();
             if (finishedCloudlets != null) {
-                for (Object o : finishedCloudlets) {
-                    if (!(o instanceof Cloudlet cl)) continue;
+                for (Cloudlet cl : finishedCloudlets) {
                     int VMid = cl.getVmId();
                     String VMName = "vm-" + VMid;
                     List<FileItem> outputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.OUTPUT)).toList();
                     for (FileItem item : outputFiles) {
+                        if (ExternalSchedulerConfig.submittedFiles.contains(item.getName())) {
+                            System.out.println("SKIPPING OUTPUTS*********************************");
+                            continue;
+                        }
                         String body = "{" +
                                 "\"path\": \"" + "/data" + "/" + item.getName() + "\"," +
                                 "\"size\": " + item.getSize() + "," +
@@ -550,22 +600,16 @@ public final class SchedulingSnapshotWriter {
                         String url = cfg.baseUrl + "/v1/file/" + cfg.execution + "/location/add/" + VMName;
                         fileBodies.add(body);
                         fileUrls.add(url);
+                        ExternalSchedulerConfig.submittedFiles.add(item.getName());
                     }
                 }
             }
-            Set<FileItem> alreadyPostedFiles = new HashSet<>();
-            for (Cloudlet cl : allFinishedCloudlets) {
-                if (cl == null) continue;
-                List<FileItem> outputFiles = ((Task) cl).getFileList();
-                alreadyPostedFiles.addAll(outputFiles);
-            }
-            if (readyCloudlets != null && !fileBodies.isEmpty()) {
+            if (readyCloudlets != null && !readyCloudlets.isEmpty()) {
                 for (Cloudlet cl : readyCloudlets) {
                     List<FileItem> inputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.INPUT)).toList();
 
                     for (FileItem item : inputFiles) {
-                        if (alreadyPostedFiles.contains(item)) {
-                            System.out.println("File " + item.getName() + " already posted, skipping...");
+                        if (ExternalSchedulerConfig.submittedFiles.contains(item.getName())) {
                             continue;
                         }
                         String body = "{" +
@@ -576,6 +620,7 @@ public final class SchedulingSnapshotWriter {
                         String url = cfg.baseUrl + "/v1/file/" + cfg.execution + "/location/add";
                         fileBodies.add(body);
                         fileUrls.add(url);
+                        ExternalSchedulerConfig.submittedFiles.add(item.getName());
                     }
                 }
             }
@@ -599,10 +644,8 @@ public final class SchedulingSnapshotWriter {
             sb.append("{\n");
             sb.append("  \"meta\": { \"simulationTime\": ").append(formatDouble(now)).append(" },\n");
             sb.append("  \"steps\": {\n");
-            if (cfg.initScheduler) {
-                sb.append("    \"registerScheduler\": {\"method\":\"POST\",\"url\": ").append(jsonString(regUrl)).append(",\"body\": ").append(regBody).append("},\n");
-                cfg.initScheduler = false;
-            }
+            sb.append("    \"registerScheduler\": {\"method\":\"POST\",\"url\": ").append(jsonString(regUrl)).append(",\"body\": ").append(regBody).append("},\n");
+
 
 
             sb.append("    \"createNodes\": [\n");
@@ -663,7 +706,7 @@ public final class SchedulingSnapshotWriter {
             }
 
             //delete finished tasks
-            List<String> podNames = finishedCloudlets.stream().map(n->"\"cl_" + n.getCloudletId()+"\"").toList();
+            List<String> podNames = finishedCloudlets.stream().map(n -> "\"cl_" + n.getCloudletId() + "\"").toList();
             sb.append("    \"reportCompletedTasks\": {\"method\":\"POST\", \"url\": ").append(jsonString(cfg.baseUrl + "/v1/admin/cluster/pods/" + cfg.namespace)).append(", \"body\": ").append(podNames).append("},\n");
 
             //kill CWS scheduler execution
@@ -681,6 +724,6 @@ public final class SchedulingSnapshotWriter {
         } catch (Exception e) {
             Log.printLine("[Scheduling] Fehler beim Schreiben des External-Steps-Snapshots: " + e.getMessage());
         }
-    }
 
+    }
 }

@@ -51,12 +51,25 @@ public class RealTracesToDax {
         Integer cores = null;  // optional
         long memory = 100l;
         List<UseFile> uses = new ArrayList<>();
+        private int getSortId(){
+            if (id.startsWith("stageIn")) return -1;
+            int ID = Integer.parseInt(id.substring(1));
+            return ID;
+        }
     }
 
     static class UseFile {
         String path;    //tag: "file
         String link;    // input|output
         long size;
+        @Override
+        public String toString() {
+            return "UseFile{" +
+                    "path='" + path + '\'' +
+                    ", link='" + link + '\'' +
+                    ", size=" + size +
+                    '}';
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -67,7 +80,7 @@ public class RealTracesToDax {
         String outPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\rnaseq_real.xml";
 
 
-        parseIOcsv(inputCsvPath, outputCsvPath);
+
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode root = mapper.readTree(Path.of(dagJsonPath).toFile());
@@ -102,6 +115,7 @@ public class RealTracesToDax {
             }
 
 
+
             if (booleanTrue(from, "process") && booleanTrue(to, "process")) {
                 //add edge to the parentsOf HasSet
                 parentsOf.computeIfAbsent(toId, k -> new HashSet<>()).add(fromId);
@@ -110,6 +124,7 @@ public class RealTracesToDax {
                 parentsOf.computeIfAbsent(toId, k -> new HashSet<>()).add("stageIn");
             }
         }
+        parseIOcsv(inputCsvPath, outputCsvPath);
 
         //get cpu and memory requirements for each job from the trace.csv file
         //and add the file list while we are already iterating over every task
@@ -173,7 +188,7 @@ public class RealTracesToDax {
                 // tolerate header or comments
                 if (line.startsWith("#")) continue;
                 String[] parts = line.split(";");
-                if (parts.length < 2) continue;
+                if (parts.length < 4) continue;
                 String name = pathToName(parts[2].trim());
                 String taskName = parts[0].trim();
                 UseFile file = new UseFile();
@@ -188,6 +203,11 @@ public class RealTracesToDax {
                 List<String> taskList = nameToTaskNameInput.getOrDefault(name, new ArrayList<>());
                 taskList.add(taskName);
                 nameToTaskNameInput.put(name, taskList);
+//                if (name.equals("_input_data_work_cf_d3af55c8ed10ed1c52467d191e4ba6_TREATMENT_rhIFNb_100_REP1_dup_intercept_mqc.txt")) {
+//                    System.out.println(nameToTaskNameOutput.get(name) +", " + jobsByName.get(nameToTaskNameOutput.get(name).getFirst()).id);
+//                    System.out.println(nameToTaskNameOutput.get(name));
+//                }
+
             }
         }
 
@@ -214,6 +234,10 @@ public class RealTracesToDax {
                 List<String> taskList = nameToTaskNameOutput.getOrDefault(name, new ArrayList<>());
                 taskList.add(taskName);
                 nameToTaskNameOutput.put(name, taskList);
+//                if (name.equals("_input_data_work_cf_d3af55c8ed10ed1c52467d191e4ba6_TREATMENT_rhIFNb_100_REP1_dup_intercept_mqc.txt")) {
+//                    System.out.println(nameToTaskNameOutput.get(name) +", " + jobsByName.get(nameToTaskNameOutput.get(name).getFirst()).id);
+//                    System.out.println(nameToTaskNameOutput.get(name));
+//                }
             }
         }
     }
@@ -241,9 +265,9 @@ public class RealTracesToDax {
 
 
         for (String name : fileNamesIn) {
-            if (name.equals("TREATMENT_rhIFNb_10000_REP1_markdup_sorted.bam")) {
-                System.out.println(nameToTaskNameInput.get(name) +", " + jobsByName.get(nameToTaskNameInput.get(name)).id);
-            }
+//            if (name.equals("_input_data_work_cf_d3af55c8ed10ed1c52467d191e4ba6_TREATMENT_rhIFNb_100_REP1_dup_intercept_mqc.txt")) {
+//                System.out.println(nameToTaskNameInput.get(name) +", " + jobsByName.get(nameToTaskNameInput.get(name)).id);
+//            }
             if (!fileNamesOut.contains(name)) {
                 UseFile file = new UseFile();
                 file.path = name;
@@ -337,7 +361,8 @@ public class RealTracesToDax {
         doc.appendChild(adag);
 
         // Jobs
-        for (Job j : jobs.values()) {
+        List<Job> sortedJobs = jobs.values().stream().sorted(Comparator.comparing(Job::getSortId)).toList();
+        for (Job j : sortedJobs) {
             Element jobEl = doc.createElement("job");
             jobEl.setAttribute("id", j.id);
             jobEl.setAttribute("name", sanitizeXmlAttr(j.taskName));

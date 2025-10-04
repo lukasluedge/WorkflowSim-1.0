@@ -91,7 +91,7 @@ public class ExternalSchedulerExample {
 
         org.cloudbus.cloudsim.Log.setDisabled(false);
         String daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\dax\\Montage_100.xml";
-        daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
+//        daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\rnaseq.xml";
         daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\rnaseq_real.xml";
 
 
