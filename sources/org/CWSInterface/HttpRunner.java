@@ -1,5 +1,6 @@
 package org.CWSInterface;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -7,6 +8,9 @@ import java.net.http.HttpResponse;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.AbstractMap;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,22 +49,27 @@ public class HttpRunner {
     private Step endBatchStep;
     private Step killExecutionStep;
     private Step resetCluster;
-    private Step envelopedBatchStep;
+    private Step requestedCopiesStep;
     private Step reportCompletedTasksStep;
-    private String dns;
+    private static String dns;
 
     // Konstruktor: lädt und parst die JSON-Datei
-    public HttpRunner(String jsonPath) throws Exception {
+    public HttpRunner(String jsonPath, boolean schedulerRegistered) throws Exception {
         JsonNode root = mapper.readTree(new File(jsonPath));
         JsonNode steps = root.path("steps");
 
-        registerSchedulerStep = parseStep(steps.path("registerScheduler"));
-        dns = registerSchedulerStep.body.path("dns").asText();
-        for (JsonNode nodeStep : steps.path("createNodes")) {
-            createNodesSteps.add(parseStep(nodeStep));
+        if (!schedulerRegistered) {
+            registerSchedulerStep = parseStep(steps.path("registerScheduler"));
+            dns = registerSchedulerStep.body.path("dns").asText();
+            for (JsonNode nodeStep : steps.path("createNodes")) {
+                createNodesSteps.add(parseStep(nodeStep));
+            }
+            dagVerticesStep = parseStep(steps.path("submitDAG").path("vertices"));
+            dagEdgesStep = parseStep(steps.path("submitDAG").path("edges"));
         }
-        dagVerticesStep = parseStep(steps.path("submitDAG").path("vertices"));
-        dagEdgesStep = parseStep(steps.path("submitDAG").path("edges"));
+
+
+
         startBatchStep = parseStep(steps.path("startBatch"));
         reportCompletedTasksStep = parseStep(steps.path("reportCompletedTasks"));
         for (JsonNode nodeStep : steps.path("registerOutputFiles")) {
@@ -80,6 +89,7 @@ public class HttpRunner {
         endBatchStep = parseStep(steps.path("endBatch"));
         killExecutionStep = parseStep(steps.path("killExecution"));
         resetCluster = parseStep(steps.path("resetCluster"));
+        requestedCopiesStep = parseStep(steps.path("getCopyRequests"));
     }
 
     private Step parseStep(JsonNode node) {
@@ -151,6 +161,41 @@ public class HttpRunner {
     }
     public String endBatch() throws Exception { return doRequest(endBatchStep); }
 
+
+    /**
+     * Holt das Mapping TaskID -> NodeName direkt vom Scheduler (oder Pods-Fallback) und gibt es als Map zurück.
+     * Entspricht der geforderten Schnittstelle mit optionalem Await.
+     */
+    public Map<Integer, String> getTaskToNodeMappingFromScheduler(String execution) throws Exception {
+        String url = dns + "/v1/admin/cluster/mapping/" + execution;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+        HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw new RuntimeException("Scheduler mapping request failed: " + resp.statusCode() + " - " + resp.body());
+        }
+        String body = resp.body();
+        if (body == null || body.isEmpty()) return new HashMap<>();
+
+        JsonNode root = mapper.readTree(body);
+        JsonNode mappingNode = root != null && root.isObject() && root.has("mapping") ? root.get("mapping") : root;
+        Map<Integer,String> out = new HashMap<>();
+        if (mappingNode != null && mappingNode.isObject()) {
+            mappingNode.fields().forEachRemaining(e -> {
+                try {
+                    Integer id = Integer.valueOf(e.getKey().substring(3));
+                    String v = e.getValue().asText(null);
+                    if (v != null) out.put(id, v);
+                } catch (NumberFormatException ignored) {}
+            });
+        }
+        return out;
+    }
+
     /**
      * Fragt für jede Task-ID die zugewiesene Node ab.
      * Voraussetzung: Der Pod-Name entspricht dem Task-RunName.
@@ -209,4 +254,48 @@ public class HttpRunner {
     public String killExecution() throws Exception { return doRequest(killExecutionStep); }
     public String resetCluster() throws Exception { return doRequest(resetCluster); }
 
+    /**
+     * Holt die geplanten Datei-Kopien vom Scheduler und gibt sie als Map zurück.
+     * Entspricht der neuen drainPlannedCopies()-Schnittstelle (filename -> targetNode).
+     */
+    public Map<String, String> drainPlannedCopies() throws Exception {
+        if (requestedCopiesStep == null) throw new IllegalStateException("getCopyRequests step not configured");
+        String body = doRequest(requestedCopiesStep);
+        return parseRequestedCopiesToMap(body);
+    }
+
+    /**
+     * Abwärtskompatibel: Delegiert auf drainPlannedCopies().
+     */
+    public Map<String, String> getRequestedCopiesAsMap() throws Exception { return drainPlannedCopies(); }
+
+    /**
+     * Optional: als Liste von Map.Entry<String,String>.
+     */
+    public List<Map.Entry<String,String>> getRequestedCopiesAsList() throws Exception {
+        Map<String,String> map = drainPlannedCopies();
+        List<Map.Entry<String,String>> out = new ArrayList<>();
+        for (Map.Entry<String,String> e : map.entrySet()) out.add(new AbstractMap.SimpleEntry<>(e.getKey(), e.getValue()));
+        return out;
+    }
+
+    // -------- intern: Parser --------
+    private Map<String,String> parseRequestedCopiesToMap(String json) throws Exception {
+        Map<String,String> result = new HashMap<>();
+        if (json == null || json.isEmpty()) return result;
+        JsonNode root = mapper.readTree(json);
+        if (root == null || root.isNull()) return result;
+        if (root.isObject()) { root.fields().forEachRemaining(e -> { String f = e.getKey(); String n = e.getValue().asText(null); if (f != null && n != null) result.put(f, n); }); return result; }
+        if (root.isArray()) for (JsonNode item : root) {
+            if (item == null || item.isNull()) continue;
+            if (item.isObject()) {
+                String f = item.hasNonNull("filename") ? item.get("filename").asText() : item.hasNonNull("file") ? item.get("file").asText() : item.hasNonNull("key") ? item.get("key").asText() : null;
+                String n = item.hasNonNull("targetNode") ? item.get("targetNode").asText() : item.hasNonNull("node") ? item.get("node").asText() : item.hasNonNull("value") ? item.get("value").asText() : null;
+                if (f != null && n != null) result.put(f, n);
+            } else if (item.isArray() && item.size() >= 2) {
+                String f = item.get(0).asText(null); String n = item.get(1).asText(null); if (f != null && n != null) result.put(f, n);
+            }
+        }
+        return result;
+    }
 }

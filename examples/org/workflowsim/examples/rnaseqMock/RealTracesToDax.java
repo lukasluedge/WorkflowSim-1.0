@@ -42,19 +42,37 @@ public class RealTracesToDax {
     private static Map<String, Job> jobs = new HashMap<>();
     private static Map<String, Job> jobsByName = new HashMap<>();
 
+    private static void reset_globals() {
+        fileSizesMap.clear();
+        parentsOf.clear();
+        nameToTaskNameInput.clear();
+        nameToTaskNameOutput.clear();
+        fileNamesIn.clear();
+        fileNamesOut.clear();
+        fileMap.clear();
+        jobs.clear();
+        jobsByName.clear();
+    }
+
     // Simple data structures
     static class Job {
         String id;
         String namespace = "default";
         String taskName;
-        long runtime = 100l; // optional
+        double runtime = 100l; // optional
         Integer cores = null;  // optional
         long memory = 100l;
         List<UseFile> uses = new ArrayList<>();
         private int getSortId(){
-            if (id.startsWith("stageIn")) return -1;
-            int ID = Integer.parseInt(id.substring(1));
-            return ID;
+            if (id.startsWith("stageIn")) return 100000000;
+            try {
+                int ID = Integer.parseInt(id);
+                return ID;
+            } catch (NumberFormatException e) {
+                int ID = Integer.parseInt(id.substring(1));
+                return ID;
+            }
+
         }
     }
 
@@ -72,64 +90,15 @@ public class RealTracesToDax {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        String dagJsonPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\orig\\physicalDag.json";
-        String inputCsvPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\orig\\input.csv";
-        String outputCsvPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\orig\\output.csv";
-        String traceCsvPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\orig\\trace.csv";
-        String outPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\orig_traces\\rnaseq_real.xml";
+    public static void parse(String dagJsonPath, String inputCsvPath, String outputCsvPath, String traceCsvPath, String outPath) throws Exception {
 
-
-
-
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(Path.of(dagJsonPath).toFile());
-        JsonNode dagRoot = root.path("edges");
-
-        for (JsonNode edge : dagRoot) {
-            JsonNode from = edge.get("from");
-            JsonNode to = edge.get("to");
-
-            // Helper: get node id (ID)
-            String fromId = nodeIdFor(from);
-            String toId = nodeIdFor(to);
-
-            // Create job entries for 'from' and 'to' if they are processes
-            if (booleanTrue(from, "process")) {
-                if (jobs.get(fromId) == null) {
-                    Job jj = new Job();
-                    jj.id = fromId;
-                    jj.taskName = from.get("taskName").asText();
-                    jobs.put(fromId, jj);
-                    jobsByName.put(jj.taskName, jj);
-                }
-            }
-            if (booleanTrue(to, "process")) {
-                if (jobs.get(toId) == null) {
-                    Job jj = new Job();
-                    jj.id = toId;
-                    jj.taskName = to.get("taskName").asText();
-                    jobs.put(toId, jj);
-                    jobsByName.put(jj.taskName, jj);
-                }
-            }
-
-
-
-            if (booleanTrue(from, "process") && booleanTrue(to, "process")) {
-                //add edge to the parentsOf HasSet
-                parentsOf.computeIfAbsent(toId, k -> new HashSet<>()).add(fromId);
-            }
-            else if (booleanTrue(to, "process")){
-                parentsOf.computeIfAbsent(toId, k -> new HashSet<>()).add("stageIn");
-            }
-        }
         parseIOcsv(inputCsvPath, outputCsvPath);
 
         //get cpu and memory requirements for each job from the trace.csv file
         //and add the file list while we are already iterating over every task
         try (BufferedReader r = Files.newBufferedReader(Path.of(traceCsvPath))) {
-            String line;
+            String line = r.readLine();
+            int lineCounter = 0;
             while ((line = r.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty()) continue;
@@ -137,13 +106,24 @@ public class RealTracesToDax {
                 if (line.startsWith("#")) continue;
                 String[] parts = line.split(",");
                 if (parts.length < 2) continue;
-                String jobName = parts[6].trim();
-                Job j = jobsByName.get(jobName);
-                if (j == null) continue;
-                j.runtime = Long.parseLong(parts[20].trim()) / 1000L;
-                j.cores = Integer.parseInt(parts[11].trim());
-                j.memory = Long.parseLong(parts[14].trim());
+                int offset = 0;
+                if (Objects.equals(parts[2], "-")) offset = 1;
+                Job j = new Job();
+                j.taskName = parts[6+offset].trim();
+                j.id = "" + lineCounter ++;
+                double realtime = Double.parseDouble(parts[20+offset].trim());
+                double usage = Double.parseDouble(parts[22+offset].trim());
+                usage = 100;
+                j.runtime = Math.round((realtime * (usage / 100d)) / 10d) / 100d;
+                j.cores = Integer.parseInt(parts[11+offset].trim());
+                j.memory = Long.parseLong(parts[14+offset].trim());
                 j.uses = fileMap.getOrDefault(j.taskName, new ArrayList<>());
+                if (jobsByName.get(j.taskName) != null || jobs.get(j.id) != null) {
+                    System.out.println("DUPLICATE JOB in trace file: " + j.id + ", " + j.taskName);
+                } else {
+                    jobsByName.putIfAbsent(j.taskName, j);
+                    jobs.putIfAbsent(j.id, j);
+                }
             }
         }
         Job stageIn = new Job();
@@ -162,6 +142,58 @@ public class RealTracesToDax {
 
         // Write out XML
         writeXml(doc, Path.of(outPath).toFile());
+    }
+
+    public static void main(String[] args) throws Exception {
+
+        String BaseInput = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\";
+        String BaseOutput = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\";
+
+        String[] workflows = {"chipseq", "rnaseq", "allIntoOne"};
+        String[] strategies = {"cws-ceph", "cws-nfs", "la-ceph", "la-nfs", "orig-ceph", "orig-nfs"};
+        int numRepetitions = 3;
+        String[] inputCsvPaths = new String[workflows.length];
+        String[] outputCsvPaths = new String[workflows.length];
+        String[] dagJsonPaths = new String[workflows.length];
+        String[][][] traceCsvPaths = new String[workflows.length][strategies.length][numRepetitions];
+        String[][][] outPaths = new String[workflows.length][strategies.length][numRepetitions];
+
+        for (int i = 0; i < workflows.length; i++) {
+            String workflow = workflows[i];
+            inputCsvPaths[i] = BaseInput + workflow + "\\IOFiles\\input.csv";
+            outputCsvPaths[i] = BaseInput + workflow + "\\IOFiles\\output.csv";
+            dagJsonPaths[i] = BaseInput + workflow + "\\IOFiles\\physicalDag.json";
+            for (int j = 0; j < strategies.length; j++) {
+                for (int k = 1; k <= numRepetitions; k++) {
+                    String tracePath = BaseInput + workflow + "\\Executions\\" + strategies[j] + "\\" + k + "\\" + "trace.csv";
+                    traceCsvPaths[i][j][k-1] = tracePath;
+                    String outPath = BaseOutput + workflows[i] + "_"+ strategies[j] + "_" + k + "_" + "DAX.xml";
+                    outPaths[i][j][k-1] = outPath;
+                }
+            }
+        }
+
+        for (int i = 0; i < workflows.length; i++) {
+            for (int j = 0; j < strategies.length; j++) {
+                for (int k = 1; k <= numRepetitions; k++) {
+                    parse(dagJsonPaths[i], inputCsvPaths[i], outputCsvPaths[i], traceCsvPaths[i][j][k-1], outPaths[i][j][k-1]);
+                    reset_globals();
+                }
+            }
+        }
+//        String dag = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\chipseq\\IOFiles\\physicalDag.json";
+//        String in = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\chipseq\\IOFiles\\input.csv";
+//        String out = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\rnaseq\\IOFiles\\output.csv";
+//        String tr = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\chipseq\\Executions\\cws-ceph\\1\\trace.csv";
+//        String outFile = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\chipseq_cws-ceph_1_DAX.xml";
+//        parse(dag, in, out, tr, outFile);
+
+
+
+
+
+
+
     }
 
     private static String pathToName(String path) {
@@ -241,23 +273,6 @@ public class RealTracesToDax {
             }
         }
     }
-//    private static Set<String> getNameList(String csvPath) throws IOException{
-//        Set<String> fileNames = new HashSet<>();
-//        try (BufferedReader r = Files.newBufferedReader(Path.of(csvPath))) {
-//            String line = r.readLine();
-//            while ((line = r.readLine()) != null) {
-//                line = line.trim();
-//                if (line.isEmpty()) continue;
-//                // tolerate header or comments
-//                if (line.startsWith("#")) continue;
-//                String[] parts = line.split(";");
-//                if (parts.length < 2) continue;
-//                String name = pathToName(parts[2].trim());
-//                fileNames.add(name);
-//            }
-//        }
-//        return fileNames;
-//    }
 
     //get all of the files for the stage in job (files that are not generated by jobs but exists at the beginning)
     private static List<UseFile> getStageInFiles() throws IOException {
@@ -274,11 +289,19 @@ public class RealTracesToDax {
                 file.link = "input";
                 file.size = fileSizesMap.getOrDefault(name, 1l);
                 originFiles.add(file);
+                for (String taskName : nameToTaskNameInput.getOrDefault(name, new ArrayList<>())) {
+                    Job j = jobsByName.get(taskName);
+                    if (j == null) {
+                        System.err.println("No such task: " + taskName);
+                    }
+                    parentsOf.computeIfAbsent(j.id, k -> new HashSet<>()).add("stageIn");
+                }
+
             } else {
                 List<String> taskNamesIn = nameToTaskNameInput.get(name);
                 List<String> taskNamesOut = nameToTaskNameOutput.get(name);
-                if (taskNamesOut.size() != 1) {
-                    System.out.println("ERROR: " + name + " has multiple producers");
+                if (taskNamesOut.size() > 1) {
+                    System.out.println("ERROR: " + name + " has multiple producers: " + taskNamesOut.size());
                 }
 
                 String idOut = jobsByName.get(taskNamesOut.getFirst()).id;
@@ -294,34 +317,6 @@ public class RealTracesToDax {
         return originFiles;
     }
 
-//    // Read CSV map taskname -> Files
-//    private static Map<String,List<UseFile>> addToFileMapping(String csvPath, Map<String, List<UseFile>> map, String link) throws IOException {
-//        try (BufferedReader r = Files.newBufferedReader(Path.of(csvPath))) {
-//            String line = r.readLine(); //ignore header
-//            while ((line = r.readLine()) != null) {
-//                line = line.trim();
-//                if (line.isEmpty()) continue;
-//                // tolerate header or comments
-//                if (line.startsWith("#")) continue;
-//                String[] parts = line.split(";");
-//                if (parts.length < 2) continue;
-//                UseFile file = new UseFile();
-//                String taskName= parts[0].trim();
-//                String path = parts[2].trim();
-//                file.path = pathToName(path);
-//                file.size = Long.parseLong(parts[4].trim());
-//                file.link = link;
-//
-//                //get existing File List if exists
-//                List<UseFile> fileList = map.getOrDefault(taskName, new ArrayList<>());
-//                //add new file to list
-//                fileList.add(file);
-//                map.put(taskName, fileList);
-//                fileSizesMap.computeIfAbsent(file.path, k -> file.size);
-//            }
-//        }
-//        return map;
-//    }
 
     private static boolean booleanTrue(JsonNode node, String field) {
         if (node == null || !node.has(field)) return false;
@@ -366,12 +361,12 @@ public class RealTracesToDax {
             Element jobEl = doc.createElement("job");
             jobEl.setAttribute("id", j.id);
             jobEl.setAttribute("name", sanitizeXmlAttr(j.taskName));
+            if (j.cores == null) j.cores = 1;
             jobEl.setAttribute("runtime", "" + j.runtime);
 
             Element cores = doc.createElement("profile");
             cores.setAttribute("namespace", j.namespace);
             cores.setAttribute("key", "cores");
-            if (j.cores == null) j.cores = 1;
             cores.setTextContent("" + j.cores);
             jobEl.appendChild(cores);
 

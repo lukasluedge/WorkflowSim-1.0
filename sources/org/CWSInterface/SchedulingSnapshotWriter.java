@@ -360,6 +360,9 @@ public final class SchedulingSnapshotWriter {
 
         public ExternalSchedulerConfig() {
         }
+        public static void reset(){
+            submittedFiles.clear();
+        }
 
         public ExternalSchedulerConfig withBaseUrl(String v) {
             this.baseUrl = v;
@@ -431,11 +434,14 @@ public final class SchedulingSnapshotWriter {
             List<Cloudlet> readyCloudlets,
             List<?> scheduled,
             List<Cloudlet> finishedCloudlets,
-            List<Cloudlet> allFinishedCloudlets,
+            boolean schedulerRegistered,
             ExternalSchedulerConfig cfg
     ) {
+        boolean specifyCluster = !schedulerRegistered;
         try {
             double now = org.cloudbus.cloudsim.core.CloudSim.clock();
+
+
 
             // 1) DAG vollständig ermitteln (transitive Hülle)
             Map<Integer, Job> jobsById = new LinkedHashMap<>();
@@ -531,8 +537,7 @@ public final class SchedulingSnapshotWriter {
                     }
                 }
             }
-            if (vmCount > 0) avgRamMiB /= vmCount;
-            long defaultTaskMemBytes = (long) Math.max(1, Math.round(avgRamMiB / 2)) * 1024L * 1024L;
+
 
             // 3) Tasks aus readyCloudlets ableiten (jetzt als ein gemeinsamer POST auf /v1/scheduler/{execution}/tasks)
             List<String> tasksJson = new ArrayList<>(); // kept for structure, but we will use a single batch step below
@@ -550,15 +555,16 @@ public final class SchedulingSnapshotWriter {
                         Files.append("          {\n");
                         Files.append("            \"name\": \"").append(item.getName()).append("\",\n");
                         Files.append("            \"value\": {\n");
-                        Files.append("              \"sourceObj\": \"").append("/data").append("/").append(item.getName()).append("\",\n");
-                        Files.append("              \"sourcePath\": \"").append("/data").append("/").append(item.getName()).append("\"\n");
+                        Files.append("              \"sourceObj\": \"").append(cfg.localWorkDir).append("/data/in/").append(item.getName()).append("\",\n");
+                        Files.append("              \"sourcePath\": \"").append(cfg.localWorkDir).append("/data/in/").append(item.getName()).append("\"\n");
                         Files.append("            }\n");
                         Files.append("          }").append(item.equals(inputFiles.getLast()) ? "" : ",").append("\n");
                     }
                     String taskName = "Job_" + id;
                     String runName = "cl_" + id;
                     double cpus = Math.max(1, cl.getNumberOfPes());
-                    long memBytes = (cl.getMemoryRequirementMB() != -1) ? (cl.getMemoryRequirementMB() * 1024L * 1024L) : defaultTaskMemBytes;
+                    long memBytes = (cl.getMemoryRequirementMB() != -1) ? (cl.getMemoryRequirementMB() * 1024L * 1024L) : 1024L * 1024L;
+                    double inputSize = inputFiles.stream().mapToDouble(obj -> obj.getSize()).sum();
                     String body = "{" +
                             "\"id\":" + id + "," +
                             "\"task\":" + jsonString(taskName) + "," +
@@ -568,6 +574,7 @@ public final class SchedulingSnapshotWriter {
                             "\"cpus\":" + String.format(java.util.Locale.ROOT, "%.1f", cpus) + "," +
                             "\"memoryInBytes\":" + memBytes + "," +
                             "\"repetition\":0," +
+                            "\"inputSize\":"+ inputSize +"," +
                             "\"inputs\": {\n" +
                             "        \"fileInputs\": [\n" +
                             Files +
@@ -593,7 +600,7 @@ public final class SchedulingSnapshotWriter {
                             continue;
                         }
                         String body = "{" +
-                                "\"path\": \"" + "/data" + "/" + item.getName() + "\"," +
+                                "\"path\": \"" + cfg.localWorkDir + "/data/in/" + item.getName() + "\"," +
                                 "\"size\": " + item.getSize() + "," +
                                 "\"timestamp\": " + System.currentTimeMillis() + "," +
                                 "\"locationWrapperID\": " + -1 + "}";
@@ -613,7 +620,7 @@ public final class SchedulingSnapshotWriter {
                             continue;
                         }
                         String body = "{" +
-                                "\"path\": \"" + "/data" + "/" + item.getName() + "\"," +
+                                "\"path\": \"" + cfg.localWorkDir + "/data/in/" + item.getName() + "\"," +
                                 "\"size\": " + item.getSize() + "," +
                                 "\"timestamp\": " + System.currentTimeMillis() + "," +
                                 "\"locationWrapperID\": " + -1 + "}";
@@ -644,37 +651,38 @@ public final class SchedulingSnapshotWriter {
             sb.append("{\n");
             sb.append("  \"meta\": { \"simulationTime\": ").append(formatDouble(now)).append(" },\n");
             sb.append("  \"steps\": {\n");
-            sb.append("    \"registerScheduler\": {\"method\":\"POST\",\"url\": ").append(jsonString(regUrl)).append(",\"body\": ").append(regBody).append("},\n");
+            if (specifyCluster) sb.append("    \"registerScheduler\": {\"method\":\"POST\",\"url\": ").append(jsonString(regUrl)).append(",\"body\": ").append(regBody).append("},\n");
 
 
+            if (specifyCluster) {
+                sb.append("    \"createNodes\": [\n");
+                for (int i = 0; i < nodesJson.size(); i++) {
+                    sb.append("      ").append(nodesJson.get(i));
+                    if (i < nodesJson.size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append("    ],\n");
 
-            sb.append("    \"createNodes\": [\n");
-            for (int i = 0; i < nodesJson.size(); i++) {
-                sb.append("      ").append(nodesJson.get(i));
-                if (i < nodesJson.size() - 1) sb.append(",");
-                sb.append("\n");
-            }
-            sb.append("    ],\n");
-
-            // DAG submit (Vertices/Edges)
-            String dagVerticesUrl = cfg.baseUrl + "/v1/scheduler/" + cfg.execution + "/DAG/vertices";
-            String dagEdgesUrl = cfg.baseUrl + "/v1/scheduler/" + cfg.execution + "/DAG/edges";
-            sb.append("    \"submitDAG\": {\n");
-            sb.append("      \"vertices\": {\"method\":\"POST\",\"url\": ").append(jsonString(dagVerticesUrl)).append(",\"body\": [\n");
-            for (int i = 0; i < verticesJson.size(); i++) {
-                sb.append("        ").append(verticesJson.get(i));
-                if (i < verticesJson.size() - 1) sb.append(",");
-                sb.append("\n");
-            }
-            sb.append("      ]},\n");
-            sb.append("      \"edges\": {\"method\":\"POST\",\"url\": ").append(jsonString(dagEdgesUrl)).append(",\"body\": [\n");
-            for (int i = 0; i < edgesJson.size(); i++) {
-                sb.append("        ").append(edgesJson.get(i));
-                if (i < edgesJson.size() - 1) sb.append(",");
-                sb.append("\n");
-            }
-            sb.append("      ]}\n");
-            sb.append("    },\n");
+                // DAG submit (Vertices/Edges)
+                String dagVerticesUrl = cfg.baseUrl + "/v1/scheduler/" + cfg.execution + "/DAG/vertices";
+                String dagEdgesUrl = cfg.baseUrl + "/v1/scheduler/" + cfg.execution + "/DAG/edges";
+                sb.append("    \"submitDAG\": {\n");
+                sb.append("      \"vertices\": {\"method\":\"POST\",\"url\": ").append(jsonString(dagVerticesUrl)).append(",\"body\": [\n");
+                for (int i = 0; i < verticesJson.size(); i++) {
+                    sb.append("        ").append(verticesJson.get(i));
+                    if (i < verticesJson.size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append("      ]},\n");
+                sb.append("      \"edges\": {\"method\":\"POST\",\"url\": ").append(jsonString(dagEdgesUrl)).append(",\"body\": [\n");
+                for (int i = 0; i < edgesJson.size(); i++) {
+                    sb.append("        ").append(edgesJson.get(i));
+                    if (i < edgesJson.size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append("      ]}\n");
+                sb.append("    },\n");
+                }
 
             // Batch Start
             String startBatchUrl = cfg.baseUrl + "/v1/scheduler/" + cfg.execution + "/startBatch";
@@ -715,8 +723,10 @@ public final class SchedulingSnapshotWriter {
 
             //reset Cluster
             String resetCluster = cfg.baseUrl + "/v1/admin/cluster/reset";
-            sb.append("    \"resetCluster\": {\"method\":\"DELETE\",\"url\": ").append(jsonString(resetCluster)).append("}\n");
+            sb.append("    \"resetCluster\": {\"method\":\"DELETE\",\"url\": ").append(jsonString(resetCluster)).append("},\n");
 
+            //get copy requests
+            sb.append("    \"getCopyRequests\": {\"method\":\"GET\",\"url\": ").append(jsonString(cfg.baseUrl + "/v1/admin/cluster/requestedCopies")).append("}\n");
             sb.append("  }\n");
             sb.append("}\n");
 

@@ -15,22 +15,29 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
     private SchedulingSnapshotWriter.ExternalSchedulerConfig cfg;
     private static boolean schedulerRegistered = false;
-    private static final java.util.Set<Integer> reportedCompleted = new java.util.HashSet<>();
     public SimEvent ev;
     public static int alreadyDeleted = 0;
-    public static boolean first = true;
     public static String execNameWithTimestamp = "my_exec"+'_' + System.currentTimeMillis();
-    public ExternalSchedulingAlgorithm(SimEvent ev) {
+    public boolean la;
+
+    public static void reset() {
+        schedulerRegistered = false;
+        alreadyDeleted = 0;
+        execNameWithTimestamp = "my_exec"+'_' + System.currentTimeMillis();
+    }
+    public ExternalSchedulingAlgorithm(SimEvent ev, String strategy, boolean locationAware) {
 
         super();
         this.ev = ev;
+        this.la = locationAware;
         cfg = new SchedulingSnapshotWriter.ExternalSchedulerConfig()
                 .withBaseUrl("http://localhost:8080")
                 .withExecution(execNameWithTimestamp)
-                .withStrategy("wow")
-                .withLocationAware(true)
+                .withStrategy(strategy)
+                .withLocationAware(locationAware)
                 .withNamespace("default")
                 .withWorkDir("./MockClusterWorkspace")
+                .withLocalWorkDir("/input")
                 .withDns("http://localhost:8080");
 
 
@@ -85,7 +92,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 getCloudletList(),     // ready Cloudlets -> Tasks
                 getScheduledList(),    // scheduled Cloudlets (für vollständigen DAG)
                 finishedCloudlets,
-                allFinishedCloudlets,
+                schedulerRegistered,
                 cfg
         );
         Log.printLine(String.format("[Scheduling] t=%.3f -> Snapshot geschrieben: %s, numcloudlets: %d",
@@ -95,24 +102,58 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
 
 
         // Initialize or reuse scheduler registration
-        HttpRunner localRunner = new HttpRunner("./traces/APICalls/" + file);
+        HttpRunner localRunner = new HttpRunner("./traces/APICalls/" + file, schedulerRegistered);
 
-        if (!schedulerRegistered) {localRunner.registerScheduler(); schedulerRegistered = true;}
-        localRunner.createNodes();
-        localRunner.submitDagVertices();
-        localRunner.submitDagEdges();
-        localRunner.registerOutputFiles();
+        if (!schedulerRegistered) {
+            localRunner.registerScheduler();
+            localRunner.createNodes();
+            localRunner.submitDagVertices();
+            localRunner.submitDagEdges();
+            schedulerRegistered = true;
+        }
+
+
+        if (this.la ) {
+            //send output files to scheduler
+            localRunner.registerOutputFiles();
+            //get requested copes from the scheduler
+            List<Map.Entry<String,String>> requestedCopies = localRunner.getRequestedCopiesAsList();
+            for (Map.Entry<String,String> e : requestedCopies) {
+                String path = e.getKey();
+                String vm = e.getValue();
+
+                String filename = path.split("/")[path.split("/").length-1];
+                String vmID = vm.split("-")[1];
+                //mark the copies as completed in the simulation as there is no way to simulate a background copy task
+                System.out.println("FILE:" + filename + " VM:" + vmID);
+                ReplicaCatalog.addFileToStorage(filename, vmID);
+            }
+            System.out.println(requestedCopies);
+        }
         localRunner.startBatch();
         if (!finishedCloudletIDs.isEmpty()) localRunner.reportCompletedTasks();
         localRunner.registerTasksSmart();
         localRunner.endBatch();
 
 
+        Map<Integer, String> result = new HashMap<>();
+        int numTries = 0;
+        while (result.isEmpty()) {
+            long time = System.currentTimeMillis();
+            System.out.print("waiting for task mapping for: ");
+//          TimeUnit.MILLISECONDS.sleep(300);
+            result = localRunner.getTaskToNodeMappingFromScheduler(execNameWithTimestamp);
+            System.out.println((System.currentTimeMillis() - time) + "ms");
+            System.out.println(result.toString());
+            numTries++;
+            if (numTries > 2) {
+                Log.printLine("[SimpleIdleFirst] No task mapping found after 3 tries.");
+                break;
+            }
 
-        TimeUnit.MILLISECONDS.sleep(200);
+        }
 
-        Map<Integer, String> result = localRunner.getNodeAssignmentsForTasks();
-        SchedulingSnapshotWriter.writeSchedulingDecisions("./traces/DESC/DESC_" + file, result);
+
 
 
 
@@ -151,7 +192,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         for (Object oCl : cloudlets) {
             Cloudlet cl = (Cloudlet) oCl;
             int clID = cl.getCloudletId();
-            String vmIDStr = result.get(clID);
+            String vmIDStr = result.getOrDefault(clID, "null");
             if (!Objects.equals(vmIDStr, "null")) {
                 int vmID = Integer.parseInt(vmIDStr.substring(3));
                 CondorVM vm = null;

@@ -165,8 +165,14 @@ public class WorkflowScheduler extends DatacenterBroker {
             case ROUNDROBIN:
                 algorithm = new RoundRobinSchedulingAlgorithm();
                 break;
-            case EXTERNAL:
-                algorithm = new ExternalSchedulingAlgorithm(ev);
+            case EXTERNAL_WOW:
+                algorithm = new ExternalSchedulingAlgorithm(ev, "wow", true);
+                break;
+            case EXTERNAL_RANK_MAX_FAIR:
+                algorithm = new ExternalSchedulingAlgorithm(ev, "rank_max-fair", false);
+                break;
+            case EXTERNAL_FIFO:
+                algorithm = new ExternalSchedulingAlgorithm(ev, "fifo-rr", false);
                 break;
             default:
                 algorithm = new StaticSchedulingAlgorithm();
