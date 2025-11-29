@@ -15,8 +15,9 @@
  */
 package org.workflowsim;
 
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+
+import org.apache.commons.math3.geometry.partitioning.utilities.OrderedTuple;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.CloudletScheduler;
 import org.cloudbus.cloudsim.Consts;
@@ -30,10 +31,12 @@ import org.cloudbus.cloudsim.VmAllocationPolicy;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.core.CloudSimTags;
 import org.cloudbus.cloudsim.core.SimEvent;
+import org.workflowsim.network.NetworkTransfer;
 import org.workflowsim.utils.ReplicaCatalog;
 import org.workflowsim.utils.Parameters;
 import org.workflowsim.utils.Parameters.ClassType;
 import org.workflowsim.utils.Parameters.FileType;
+import org.workflowsim.network.NetworkModel;
 
 /**
  * WorkflowDatacenter extends Datacenter so as we can use CondorVM and other
@@ -44,6 +47,15 @@ import org.workflowsim.utils.Parameters.FileType;
  * @date Apr 9, 2013
  */
 public class WorkflowDatacenter extends Datacenter {
+    public static int tmp_counter = 0;
+    private double networkAvailableAt = 0.0;
+    public boolean useSharedNetwork = false;
+    public static List<List<Double>> DebugBuffer = new ArrayList<List<Double>>();
+    // near other fields
+    private Map<Integer, List<NetworkTransfer>> pendingTransfersByJob = new HashMap<>();
+    // and also a Map to hold Job objects waiting to be submitted:
+    private Map<Integer, Job> waitingJobs = new HashMap<>();
+
 
     public WorkflowDatacenter(String name,
             DatacenterCharacteristics characteristics,
@@ -51,6 +63,7 @@ public class WorkflowDatacenter extends Datacenter {
             List<Storage> storageList,
             double schedulingInterval) throws Exception {
         super(name, characteristics, vmAllocationPolicy, storageList, schedulingInterval);
+        NetworkModel.setDatacenterIdForEvents(getId());
     }
 
     /**
@@ -129,20 +142,57 @@ public class WorkflowDatacenter extends Datacenter {
              * Add data transfer time (communication cost
              */
             double fileTransferTime = 0.0;
-            if (job.getClassType() == ClassType.COMPUTE.value) {
-                fileTransferTime = processDataStageInForComputeJob(job.getFileList(), job);
-            }
+            if (!useSharedNetwork) {
+                if (job.getClassType() == ClassType.COMPUTE.value) {
+                    fileTransferTime = processDataStageInForComputeJob(job.getFileList(), job);
+                }
 
-            CloudletScheduler scheduler = vm.getCloudletScheduler();
-            double estimatedFinishTime = scheduler.cloudletSubmit(job, fileTransferTime);
-            updateTaskExecTime(job, vm);
+                CloudletScheduler scheduler = vm.getCloudletScheduler();
+                double estimatedFinishTime = scheduler.cloudletSubmit(job, fileTransferTime);
+                updateTaskExecTime(job, vm);
 
-            // if this cloudlet is in the exec queue
-            if (estimatedFinishTime > 0.0 && !Double.isInfinite(estimatedFinishTime)) {
-                send(getId(), estimatedFinishTime, CloudSimTags.VM_DATACENTER_EVENT);
-            } else {
-                Log.printLine("Warning: You schedule cloudlet to a busy VM");
+                // if this cloudlet is in the exec queue
+                if (estimatedFinishTime > 0.0 && !Double.isInfinite(estimatedFinishTime)) {
+                    send(getId(), estimatedFinishTime, CloudSimTags.VM_DATACENTER_EVENT);
+                } else {
+                    Log.printLine("Warning: You schedule cloudlet to a busy VM");
+                }
+            }else {
+                if (job.getClassType() == ClassType.COMPUTE.value) {
+                    // register transfers and store the job for deferred submission
+                    processDataStageInForComputeJob(job.getFileList(), job);
+                    // If there are pending transfers, do NOT submit job yet.
+                    List<org.workflowsim.network.NetworkTransfer> pend = pendingTransfersByJob.get(job.getCloudletId());
+                    if (pend != null && !pend.isEmpty()) {
+                        // defer submission until transfers complete
+                        waitingJobs.put(job.getCloudletId(), job);
+                        // We don't call scheduler.cloudletSubmit now.
+                    } else {
+                        // no transfers needed -> proceed as before
+                        CloudletScheduler scheduler = vm.getCloudletScheduler();
+                        double estimatedFinishTime = scheduler.cloudletSubmit(job, 0.0);
+                        updateTaskExecTime(job, vm);
+                        if (estimatedFinishTime > 0.0 && !Double.isInfinite(estimatedFinishTime)) {
+                            send(getId(), estimatedFinishTime, CloudSimTags.VM_DATACENTER_EVENT);
+                        }
+                    }
+                } else {
+                    // non-compute classes: unchanged path (stage-in/out jobs etc.)
+                    CloudletScheduler scheduler = vm.getCloudletScheduler();
+                    double estimatedFinishTime = scheduler.cloudletSubmit(job, fileTransferTime);
+                    updateTaskExecTime(job, vm);
+                    // if this cloudlet is in the exec queue
+                    if (estimatedFinishTime > 0.0 && !Double.isInfinite(estimatedFinishTime)) {
+                        send(getId(), estimatedFinishTime, CloudSimTags.VM_DATACENTER_EVENT);
+                    } else {
+                        Log.printLine("Warning: You schedule a cloudlet to a busy VM");
+                    }
+                }
             }
+//
+
+
+
 
             if (ack) {
                 int[] data = new int[3];
@@ -231,6 +281,10 @@ public class WorkflowDatacenter extends Datacenter {
             //The input file is not an output File 
             if (file.isRealInputFile(requiredFiles)) {
                 double maxBwth = 0.0;
+                //for shared network
+                double sizeMB = file.getSize() / (double) Consts.MILLION;
+                org.workflowsim.network.NetworkTransfer nt;
+                List<org.workflowsim.network.NetworkTransfer> list;
                 List siteList = ReplicaCatalog.getStorageList(file.getName());
                 if (siteList.isEmpty()) {
                     throw new Exception(file.getName() + " does not exist");
@@ -250,6 +304,13 @@ public class WorkflowDatacenter extends Datacenter {
                         }
                         //Storage storage = getStorageList().get(0);
                         time += file.getSize() / (double) Consts.MILLION / maxRate;
+                        if (useSharedNetwork) {
+                            nt = org.workflowsim.network.NetworkModel.createAndRegister(sizeMB, file);
+                            list = pendingTransfersByJob.computeIfAbsent(job.getCloudletId(), k -> new ArrayList<>());
+                            list.add(nt);
+                        }
+
+
                         break;
                     case LOCAL:
                         int vmId = job.getVmId();
@@ -270,6 +331,7 @@ public class WorkflowDatacenter extends Datacenter {
                              */
                             if (site.equals(Integer.toString(vmId))) {
                                 requiredFileStagein = false;
+                                tmp_counter++;
                                 break;
                             }
                             double bwth;
@@ -288,6 +350,11 @@ public class WorkflowDatacenter extends Datacenter {
                         }
                         if (requiredFileStagein && maxBwth > 0.0) {
                             time += file.getSize() / (double) Consts.MILLION / maxBwth;
+                            if (useSharedNetwork) {
+                                nt = org.workflowsim.network.NetworkModel.createAndRegister(sizeMB, file);
+                                list = pendingTransfersByJob.computeIfAbsent(job.getCloudletId(), k -> new ArrayList<>());
+                                list.add(nt);
+                            }
                         }
 
                         /**
@@ -302,7 +369,30 @@ public class WorkflowDatacenter extends Datacenter {
                 }
             }
         }
+
+
+//        List<Double> debugTuple = new ArrayList<>();
+//        debugTuple.add((double) job.getCloudletId());
+//        debugTuple.add(time);
+//
+//        time = applySequentialNetwork(time);
+//
+//        debugTuple.add(time);
+//        DebugBuffer.add(debugTuple);
+
         return time;
+    }
+    private double applySequentialNetwork(double baseTransferTime) {
+        double now = CloudSim.clock();
+        // in case there is nothing to transfer
+        if (baseTransferTime <= 0.0) {
+            return 0.0;
+        }
+        double start = Math.max(now, networkAvailableAt);
+        double finish = start + baseTransferTime;
+        networkAvailableAt = finish;
+
+        return finish - now;
     }
 
     @Override
@@ -387,5 +477,61 @@ public class WorkflowDatacenter extends Datacenter {
                 }
             }
         }
+    }
+
+    @Override
+    protected void processOtherEvent(SimEvent ev) {
+        int tag = ev.getTag();
+        if (tag == WorkflowSimTags.NETWORK_TRANSFER_COMPLETE && useSharedNetwork) {
+            // payload is NetworkTransfer
+            org.workflowsim.network.NetworkTransfer nt = (org.workflowsim.network.NetworkTransfer) ev.getData();
+            // ensure this event is current (logical cancellation)
+            org.workflowsim.network.NetworkModel.updateSingleFromNow(nt);
+            if (nt.unregistered) {
+                return;
+            }
+            // If remainingMB <= eps, treat as finished
+            if (nt.finished || nt.remainingMB <= 1e-9) {
+                // mark finished and unregister from model (this will also redistribute)
+                org.workflowsim.network.NetworkModel.unregister(nt);
+                // notify job: find the job list that contains this transfer
+                // We stored pendingTransfersByJob map earlier: find the job id that references this nt
+                // simplest: scan pendingTransfersByJob for an entry that contains nt
+                Integer jobIdFound = null;
+                for (Map.Entry<Integer, List<org.workflowsim.network.NetworkTransfer>> e : pendingTransfersByJob.entrySet()) {
+                    if (e.getValue().remove(nt)) {
+                        jobIdFound = e.getKey();
+                        break;
+                    }
+                }
+                if (jobIdFound != null) {
+                    List<org.workflowsim.network.NetworkTransfer> remaining = pendingTransfersByJob.get(jobIdFound);
+                    if (remaining == null || remaining.isEmpty()) {
+                        // all transfers for that job finished -> submit job to VM scheduler now
+                        Job job = waitingJobs.remove(jobIdFound);
+                        if (job != null) {
+                            // Find VM and submit as in original logic
+                            int userId = job.getUserId();
+                            int vmId = job.getVmId();
+                            Host host = getVmAllocationPolicy().getHost(vmId, userId);
+                            CondorVM vm = (CondorVM) host.getVm(vmId, userId);
+                            CloudletScheduler scheduler = vm.getCloudletScheduler();
+                            double estimatedFinishTime = scheduler.cloudletSubmit(job, 0.0);
+                            updateTaskExecTime(job, vm);
+                            if (estimatedFinishTime > 0.0 && !Double.isInfinite(estimatedFinishTime)) {
+                                send(getId(), estimatedFinishTime, CloudSimTags.VM_DATACENTER_EVENT);
+                            }
+                        }
+                        // cleanup map
+                        pendingTransfersByJob.remove(jobIdFound);
+                    } // else still waiting for other transfers
+                }
+            } else {
+                // event was stale (some redistributed earlier) -> ignore
+            }
+            return;
+        }
+        // default: call parent to handle others
+        super.processOtherEvent(ev);
     }
 }

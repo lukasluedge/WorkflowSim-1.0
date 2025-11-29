@@ -22,7 +22,7 @@ import org.cloudbus.cloudsim.core.CloudSimTags;
 
 /**
  * CloudletSchedulerSpaceShared implements a policy of scheduling performed by a virtual machine. It
- * consider that there will be only one cloudlet per VM. Other cloudlets will be in a waiting list.
+ * considers that there will be only one cloudlet per VM. Other cloudlets will be in a waiting list.
  * We consider that file transfer from cloudlets waiting happens before cloudlet execution. I.e.,
  * even though cloudlets must wait for CPU, data transfer happens as soon as cloudlets are
  * submitted.

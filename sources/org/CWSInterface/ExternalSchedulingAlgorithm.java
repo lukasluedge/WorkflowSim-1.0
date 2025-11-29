@@ -116,7 +116,7 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         if (this.la ) {
             //send output files to scheduler
             localRunner.registerOutputFiles();
-            //get requested copes from the scheduler
+            //get requested copies from the scheduler
             List<Map.Entry<String,String>> requestedCopies = localRunner.getRequestedCopiesAsList();
             for (Map.Entry<String,String> e : requestedCopies) {
                 String path = e.getKey();
@@ -125,10 +125,10 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
                 String filename = path.split("/")[path.split("/").length-1];
                 String vmID = vm.split("-")[1];
                 //mark the copies as completed in the simulation as there is no way to simulate a background copy task
-                System.out.println("FILE:" + filename + " VM:" + vmID);
+//                System.out.println("FILE:" + filename + " VM:" + vmID);
                 ReplicaCatalog.addFileToStorage(filename, vmID);
             }
-            System.out.println(requestedCopies);
+//            System.out.println(requestedCopies);
         }
         localRunner.startBatch();
         if (!finishedCloudletIDs.isEmpty()) localRunner.reportCompletedTasks();
@@ -140,11 +140,11 @@ public class ExternalSchedulingAlgorithm extends BaseSchedulingAlgorithm {
         int numTries = 0;
         while (result.isEmpty()) {
             long time = System.currentTimeMillis();
-            System.out.print("waiting for task mapping for: ");
+//            System.out.print("waiting for task mapping for: ");
 //          TimeUnit.MILLISECONDS.sleep(300);
             result = localRunner.getTaskToNodeMappingFromScheduler(execNameWithTimestamp);
-            System.out.println((System.currentTimeMillis() - time) + "ms");
-            System.out.println(result.toString());
+//            System.out.println((System.currentTimeMillis() - time) + "ms");
+//            System.out.println(result.toString());
             numTries++;
             if (numTries > 2) {
                 Log.printLine("[SimpleIdleFirst] No task mapping found after 3 tries.");

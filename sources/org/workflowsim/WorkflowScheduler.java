@@ -362,6 +362,7 @@ public class WorkflowScheduler extends DatacenterBroker {
         if (!processCloudletSubmitHasShown) {
             processCloudletSubmitHasShown = true;
         }
+        printProgress();
     }
 
     /**
@@ -380,4 +381,10 @@ public class WorkflowScheduler extends DatacenterBroker {
             sendNow(datacenterId, CloudSimTags.RESOURCE_CHARACTERISTICS, getId());
         }
     }
+
+    private void printProgress() {
+        int completed = getCloudletReceivedList() != null ? getCloudletReceivedList().size() : 0;
+        System.out.print("completed jobs: " + completed + "\r");
+    }
+
 }

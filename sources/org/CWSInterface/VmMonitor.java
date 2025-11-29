@@ -4,6 +4,11 @@ import org.cloudbus.cloudsim.Datacenter;
 import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.Log;
 import org.cloudbus.cloudsim.Vm;
+import org.cloudbus.cloudsim.Cloudlet;
+import org.cloudbus.cloudsim.ResCloudlet;
+import org.cloudbus.cloudsim.CloudletScheduler;
+import org.cloudbus.cloudsim.CloudletSchedulerTimeShared;
+import org.cloudbus.cloudsim.CloudletSchedulerSpaceShared;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.core.SimEntity;
 import org.cloudbus.cloudsim.core.SimEvent;
@@ -61,7 +66,7 @@ public class VmMonitor extends SimEntity {
         this.outputPath = outputPath;
         this.idleSampleThreshold = Math.max(0, idleSampleThreshold);
         // CSV-Header
-        lines.add("time,datacenter,hostId,vmId,cpuUtilFraction,ramUsed,ramTotal");
+        lines.add("time,datacenter,hostId,vmId,cpuUsed,ramUsed,ramTotal,taskIds");
     }
 
     @Override
@@ -116,8 +121,52 @@ public class VmMonitor extends SimEntity {
                 int hostId = host.getId();
                 for (Vm vm : host.getVmList()) {
                     any = true;
-                    double cpuUtil = clamp01(vm.getTotalUtilizationOfCpu(now)); // [0..1]
-                    int ramUsed = safeGetRequestedRam(vm);
+                    // Gather executing tasks; compute CPU utilization as sum of numPEs of running tasks, and RAM used as sum over tasks
+                    String taskIds = "";
+                    long ramUsedSum = 0;
+                    int totalPesUsed = 0;
+                    try {
+                        CloudletScheduler scheduler = vm.getCloudletScheduler();
+                        List<ResCloudlet> exec = null;
+                        if (scheduler instanceof CloudletSchedulerTimeShared) {
+                            exec = ((CloudletSchedulerTimeShared) scheduler).getCloudletExecList();
+                        } else if (scheduler instanceof CloudletSchedulerSpaceShared) {
+                            exec = ((CloudletSchedulerSpaceShared) scheduler).getCloudletExecList();
+                        }
+                        if (exec != null && !exec.isEmpty()) {
+                            StringBuilder idsBuilder = new StringBuilder();
+                            boolean first = true;
+                            for (ResCloudlet rcl : exec) {
+                                Cloudlet cl = rcl.getCloudlet();
+                                if (!first) idsBuilder.append(';');
+                                first = false;
+                                idsBuilder.append(cl.getCloudletId());
+                                // Sum PEs used by this task
+                                totalPesUsed += Math.max(1, cl.getNumberOfPes());
+
+                                long mem = cl.getMemoryRequirementMB();
+                                if (mem > 0) {
+                                    ramUsedSum += mem;
+                                } else {
+                                    // Fallback: use utilization fraction times VM RAM
+                                    double frac = cl.getUtilizationOfRam(now);
+                                    if (Double.isFinite(frac) && frac > 0) {
+                                        ramUsedSum += Math.round(frac * vm.getRam());
+                                    }
+                                }
+                            }
+                            taskIds = idsBuilder.toString();
+                        }
+                    } catch (Throwable t) {
+                        // ignore, leave defaults
+                    }
+
+                    // cpuUtil is defined as the sum of numPEs of all running tasks on the VM (not just task count)
+                    double cpuUtil = 0.0;
+                    try {
+                        cpuUtil = totalPesUsed;
+                    } catch (Throwable ignored) {}
+
                     int ramTotal = vm.getRam();
 
                     StringJoiner sj = new StringJoiner(",");
@@ -126,8 +175,9 @@ public class VmMonitor extends SimEntity {
                     sj.add(String.valueOf(hostId));
                     sj.add(String.valueOf(vm.getId()));
                     sj.add(String.valueOf(cpuUtil));
-                    sj.add(String.valueOf(ramUsed));
+                    sj.add(String.valueOf(ramUsedSum));
                     sj.add(String.valueOf(ramTotal));
+                    sj.add(taskIds);
 
                     lines.add(sj.toString());
                 }

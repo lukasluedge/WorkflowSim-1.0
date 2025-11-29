@@ -124,7 +124,7 @@ public class HttpRunner {
         }
 
         HttpResponse<String> resp = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-        System.out.println("--> " + step.method + " " + step.url + ": " + resp.statusCode());
+//        System.out.println("--> " + step.method + " " + step.url + ": " + resp.statusCode());
         return resp.body();
     }
 

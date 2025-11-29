@@ -111,12 +111,12 @@ public class RealTracesToDax {
                 Job j = new Job();
                 j.taskName = parts[6+offset].trim();
                 j.id = "" + lineCounter ++;
-                double realtime = Double.parseDouble(parts[20+offset].trim());
+                double realtime = Double.parseDouble(parts[20+offset].trim()); //19 duration; 20 realtime
                 double usage = Double.parseDouble(parts[22+offset].trim());
-                usage = 100;
-                j.runtime = Math.round((realtime * (usage / 100d)) / 10d) / 100d;
+//                usage = 100;
                 j.cores = Integer.parseInt(parts[11+offset].trim());
-                j.memory = Long.parseLong(parts[14+offset].trim());
+                j.runtime = Math.round((realtime * (usage / j.cores / 100d)) / 10d) / 100d;
+                j.memory = Long.parseLong(parts[24+offset].trim()); //peak rss:26 memory 14 rss:24
                 j.uses = fileMap.getOrDefault(j.taskName, new ArrayList<>());
                 if (jobsByName.get(j.taskName) != null || jobs.get(j.id) != null) {
                     System.out.println("DUPLICATE JOB in trace file: " + j.id + ", " + j.taskName);
@@ -149,7 +149,7 @@ public class RealTracesToDax {
         String BaseInput = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\Data\\";
         String BaseOutput = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\";
 
-        String[] workflows = {"chipseq", "rnaseq", "allIntoOne"};
+        String[] workflows = {"chipseq", "rnaseq", "allIntoOne",};
         String[] strategies = {"cws-ceph", "cws-nfs", "la-ceph", "la-nfs", "orig-ceph", "orig-nfs"};
         int numRepetitions = 3;
         String[] inputCsvPaths = new String[workflows.length];

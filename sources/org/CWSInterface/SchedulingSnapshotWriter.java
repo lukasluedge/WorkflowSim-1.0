@@ -596,7 +596,7 @@ public final class SchedulingSnapshotWriter {
                     List<FileItem> outputFiles = ((Task) cl).getFileList().stream().filter(obj -> obj.getType().equals(Parameters.FileType.OUTPUT)).toList();
                     for (FileItem item : outputFiles) {
                         if (ExternalSchedulerConfig.submittedFiles.contains(item.getName())) {
-                            System.out.println("SKIPPING OUTPUTS*********************************");
+                            System.out.println("SKIPPING OUTPUTS*********************************" + item.getName());
                             continue;
                         }
                         String body = "{" +
