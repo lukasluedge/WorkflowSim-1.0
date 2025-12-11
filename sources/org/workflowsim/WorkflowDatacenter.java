@@ -145,6 +145,7 @@ public class WorkflowDatacenter extends Datacenter {
             if (!useSharedNetwork) {
                 if (job.getClassType() == ClassType.COMPUTE.value) {
                     fileTransferTime = processDataStageInForComputeJob(job.getFileList(), job);
+                    fileTransferTime = applySequentialNetwork(fileTransferTime);
                 }
 
                 CloudletScheduler scheduler = vm.getCloudletScheduler();

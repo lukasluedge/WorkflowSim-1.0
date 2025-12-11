@@ -29,6 +29,7 @@ import org.CWSInterface.ExternalSchedulingAlgorithm;
 import org.CWSInterface.HttpRunner;
 import org.CWSInterface.SchedulingSnapshotWriter;
 import org.CWSInterface.VmMonitor;
+import org.apache.commons.math3.util.Pair;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.CloudletSchedulerSpaceShared;
 import org.cloudbus.cloudsim.DatacenterCharacteristics;
@@ -86,9 +87,9 @@ public class ExternalSchedulerExample {
         public int vmRamMb = 128 * 1024;     // RAM per VM (MB)
         public long vmImageSizeMb = 10_000; // Image size (MB)
         //used with default workflowSim Network model (no real network simulation)
-        public long vmBw = 1;            // Bandwidth per VM 10_000
+        public long vmBw = 160;            // 135 chipseq; 160 rnaseq
         //used with improved network simulation
-        public long networkBwMB = 175;
+        public long networkBwMB = 0;
         public String vmm = "Xen";          // VMM name
 
         // Datacenter characteristics
@@ -144,70 +145,93 @@ public class ExternalSchedulerExample {
         excludeFiles.add("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\chipseq_cws-ceph_1_DAX.xml");
         File folder = new File(directoryPath);
 
-    if (false) {
+        if (false) {
 
-//        simulate_wrapper("rnaseq", "orig-ceph", "orig-ceph");
-//        simulate_wrapper("rnaseq", "orig-ceph", "cws-ceph");
-//        simulate_wrapper("rnaseq", "cws-ceph", "orig-ceph");
-//        simulate_wrapper("rnaseq", "cws-ceph", "cws-ceph");
-//
-        simulate_wrapper("rnaseq", "cws-ceph", "cws-ceph");
-        simulate_wrapper("rnaseq", "cws-ceph", "la-ceph");
-        simulate_wrapper("rnaseq", "la-ceph", "cws-ceph");
-        simulate_wrapper("rnaseq", "la-ceph", "la-ceph");
-//
-//        simulate_wrapper("chipseq", "orig-ceph", "orig-ceph");
-//        simulate_wrapper("chipseq", "orig-ceph", "cws-ceph");
-//        simulate_wrapper("chipseq", "cws-ceph", "orig-ceph");
-//        simulate_wrapper("chipseq", "cws-ceph", "cws-ceph");
-//
-//        simulate_wrapper("chipseq", "cws-ceph", "cws-ceph");
-//        simulate_wrapper("chipseq", "cws-ceph", "la-ceph");
-//        simulate_wrapper("chipseq", "la-ceph", "cws-ceph");
-//        simulate_wrapper("chipseq", "la-ceph", "la-ceph");
+            simulate_wrapper("rnaseq", "orig-ceph", "orig-ceph");
+            simulate_wrapper("rnaseq", "orig-ceph", "cws-ceph");
+            simulate_wrapper("rnaseq", "cws-ceph", "orig-ceph");
+            simulate_wrapper("rnaseq", "cws-ceph", "cws-ceph");
+    //
+            simulate_wrapper("rnaseq", "cws-ceph", "la-ceph");
+            simulate_wrapper("rnaseq", "la-ceph", "cws-ceph");
+            simulate_wrapper("rnaseq", "la-ceph", "la-ceph");
+    //
+            simulate_wrapper("chipseq", "orig-ceph", "orig-ceph");
+            simulate_wrapper("chipseq", "orig-ceph", "cws-ceph");
+            simulate_wrapper("chipseq", "cws-ceph", "orig-ceph");
 
-//        simulate_wrapper("allIntoOne", "orig-ceph", "orig-ceph");
-//        simulate_wrapper("allIntoOne", "orig-ceph", "cws-ceph");
-//        simulate_wrapper("allIntoOne", "cws-ceph", "orig-ceph");
-//        simulate_wrapper("allIntoOne", "cws-ceph", "cws-ceph");
-//
-//        simulate_wrapper("allIntoOne", "cws-ceph", "cws-ceph");
-//        simulate_wrapper("allIntoOne", "cws-ceph", "la-ceph");
-//        simulate_wrapper("allIntoOne", "la-ceph", "cws-ceph");
-//        simulate_wrapper("allIntoOne", "la-ceph", "la-ceph");
-    }
+            simulate_wrapper("chipseq", "cws-ceph", "cws-ceph");
+            simulate_wrapper("chipseq", "cws-ceph", "la-ceph");
+            simulate_wrapper("chipseq", "la-ceph", "cws-ceph");
+            simulate_wrapper("chipseq", "la-ceph", "la-ceph");
 
-    if (false) {
-        Integer[] bws = {175};
-        Integer[] mipss = {15000};
-        Integer[] nodess = {2, 4, 8 ,12, 20, 30, 40, 100};
-        for (int mips : mipss) {
-            for (int bw : bws) {
-//                synthetic_wrapper("rnaseq", true, "la-ceph", 8, 32, 128 * 1024, bw, mips);
-                synthetic_wrapper("chipseq", true, "cws-ceph", "cws-ceph", 8, 32, 128 * 1024, bw, mips);
-                System.out.println("mips: " + mips + "bw: " + bw);
+            simulate_wrapper("allIntoOne", "orig-ceph", "orig-ceph");
+            simulate_wrapper("allIntoOne", "orig-ceph", "cws-ceph");
+            simulate_wrapper("allIntoOne", "cws-ceph", "orig-ceph");
+
+            simulate_wrapper("allIntoOne", "cws-ceph", "cws-ceph");
+            simulate_wrapper("allIntoOne", "cws-ceph", "la-ceph");
+            simulate_wrapper("allIntoOne", "la-ceph", "cws-ceph");
+            simulate_wrapper("allIntoOne", "la-ceph", "la-ceph");
+        }
+
+        if (true) {
+            Integer[] bws = {140, 150, 160};
+            Integer[] mipss = {1000, 4000, 7000, 10000, 13000, 20000};
+            Integer[] nodess = {2, 4, 8 ,12, 20, 30, 40, 100};
+            for (int mips : mipss) {
+                for (int bw : bws) {
+    //                synthetic_wrapper("rnaseq", true, "la-ceph", 8, 32, 128 * 1024, bw, mips);
+                    synthetic_wrapper("rnaseq", true, "cws-ceph", "cws-ceph", 8, 32, 128 * 1024, bw, mips, true);
+                    System.out.println("cws   mips: " + mips + "bw: " + bw);
+                    synthetic_wrapper("rnaseq", true, "la-ceph", "la-ceph", 8, 32, 128 * 1024, bw, mips, true);
+                    System.out.println("la    mips: " + mips + "bw: " + bw);
+                }
+            }
+        }
+
+        if (false) {
+            experiment_wrapper("chipseq", "cws", "cws", 1, 1, true);
+        }
+
+        if (false) {
+            String[] workflows = { "chipseq", "rnaseq"};
+            String[] strategies = {"la", "orig", "cws"};
+            for (String workflow : workflows) {
+                for (int numTrace = 1; numTrace <= 3; numTrace++) {
+                    for (int numSim = 1; numSim <= 2; numSim++) {
+                        for (String strategyA: strategies) {
+                            for (String strategyB: strategies) {
+                                experiment_wrapper(workflow, strategyA, strategyB, numTrace, numSim, true);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    if (true) {
-//        simulate_wrapper("rnaseq", "cws-nfs", "cws-nfs");
-        simulate_wrapper("rnaseq", "la-ceph", "la-ceph");
-//        simulate_wrapper("allIntoOne", "cws-ceph", "cws-ceph");
-//        simulate_wrapper("chipseq", "cws-ceph", "cws-ceph");
-//        PrintWriter writer = new PrintWriter("file_transfers.csv", "UTF-8");
-//        writer.println("jobID,origTime,new_time");
-//        for (List<Double> tuple : WorkflowDatacenter.DebugBuffer) {
-//            writer.println(tuple.get(0) + "," + tuple.get(1) + "," + tuple.get(2));
-//        }
-//        writer.close();
-    }
+    /**
+     *
+     * @param workflow real workflow
+     * @param strategyA strategy with ceph file system
+     * @param strategyB strategy with ceph file system
+     * @param numA trace number
+     * @param numB simulation number
+     */
+    private static void experiment_wrapper(String workflow, String strategyA, String strategyB, int numA, int numB, boolean adjustChipseq) {
+        String strategyTrace = strategyA + "-ceph";
+        String strategySim = strategyB + "-ceph";
+        String numTrace = "" + numA;
+        String numSim = "" + numB;
+        String adjust = adjustChipseq ? "_c" : "";
+        String daxFile ="C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\" + workflow + "_" + strategyTrace + "_" + numTrace + "_DAX.xml";
+        String outTraceName = workflow + "_" + strategyA + "_" + numTrace + "_" + strategyB + "_" + numSim + adjust;
+        System.out.println(workflow + " " + strategyA + " " + numTrace + " " + strategyB + " " + numSim);
+        simulate(daxFile, getSchedulingAlgorithm(strategySim), false, outTraceName,"Experiments");
 
-//
-//        simulate("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\rnaseq_orig-ceph_1_DAX.xml", Parameters.SchedulingAlgorithm.DATA, true);
-
     }
-    private static void synthetic_wrapper(String workflow, boolean realWf, String strategy_trace, String strategy_sim, int nodes, int cores, int ram, int bw, int mips) {
+    private static void synthetic_wrapper(String workflow, boolean realWf, String strategy_trace, String strategy_sim, int nodes, int cores, int ram, int bw, int mips, boolean experiment) {
         String daxPath;
         if (realWf) daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\" + workflow + "_" + strategy_trace + "_1_DAX.xml";
         else daxPath = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\dax\\" + workflow + ".xml";
@@ -217,20 +241,28 @@ public class ExternalSchedulerExample {
         CFG.vmRamMb = ram;
         CFG.hostRamMb = ram;
         CFG.networkBwMB = bw;
+        String folder;
+        if (experiment) folder = "Experiments";
+        else folder = "SimOutput";
         String outTraceName = "synthetic\\" + workflow + "_" + strategy_sim + "_" + nodes + "_" + cores + "_" + ram + "_" + bw + "_" + mips;
 
-        simulate(daxPath, getSchedulingAlgorithm(strategy_sim), false, outTraceName);
+        simulate(daxPath, getSchedulingAlgorithm(strategy_sim), false, outTraceName, folder
+        );
     }
+
     private static void simulate_wrapper(String workflow, String strategyA, String strategyB) {
         String strategyTrace = strategyA;
         String strategySim = strategyB;
         String fileSystem = strategySim.split("-")[1];
+        if (fileSystem.equals("nfs")) fileSystem = "shared";
+        else fileSystem = "local";
         String numTrace = "1";
         String daxFile ="C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\config\\rnaseqMock\\DAX\\" + workflow + "_" + strategyTrace + "_" + numTrace + "_DAX.xml";
-        String outTraceName = workflow + "_" + strategyTrace + "_" + numTrace + "_" + strategySim;
-        System.out.println(fileSystem + (fileSystem.equals("nfs")));
-        simulate(daxFile, getSchedulingAlgorithm(strategySim), (fileSystem.equals("nfs")), outTraceName);
+        String outTraceName = workflow + "_" + strategyTrace + "_" + numTrace + "_" + strategySim + "_" + fileSystem;
+        System.out.println(workflow + " " + strategyTrace + " " + numTrace + " " + strategySim);
+        simulate(daxFile, getSchedulingAlgorithm(strategySim), (fileSystem.equals("nfs")), outTraceName, "SimOutput");
     }
+
     private static Parameters.SchedulingAlgorithm getSchedulingAlgorithm(String strategy) {
         if (strategy.contains("-")) {
             strategy = strategy.split("-")[0];
@@ -252,7 +284,7 @@ public class ExternalSchedulerExample {
         return parameters;
     }
 
-    public static void simulate(String daxPath, Parameters.SchedulingAlgorithm strategy, boolean sharedFS, String outTraceName) {
+    public static void simulate(String daxPath, Parameters.SchedulingAlgorithm strategy, boolean sharedFS, String outTraceName, String folder) {
 
         Log.setDisabled(false);
         String runName = daxPath.split("\\\\")[daxPath.split("\\\\").length - 1].replace(".xml", "");
@@ -260,7 +292,7 @@ public class ExternalSchedulerExample {
 
         try {
 
-            PrintStream ps = new PrintStream(new FileOutputStream("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\SimOutput\\logs\\"+ outTraceName + "_" + System.currentTimeMillis() + ".log", false), true, "UTF-8");
+            PrintStream ps = new PrintStream(new FileOutputStream("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\"+folder+"\\logs\\"+ outTraceName + "_" + System.currentTimeMillis() + ".log", false), true, "UTF-8");
             Log.setOutput(ps);
         } catch (IOException e) {
             e.printStackTrace();
@@ -347,7 +379,7 @@ public class ExternalSchedulerExample {
 
             // VM/Host-Utilization Monitor aktivieren (CPU/RAM über die Zeit erfassen)
             double samplingInterval = 0.5; // Simulationszeit-Einheiten
-            String metricsOut = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\SimOutput\\metrics\\"
+            String metricsOut = "C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\"+folder+"\\metrics\\"
                     + outTraceName + "_vm_metrics.csv";
             new VmMonitor("VmMonitor", java.util.List.of(datacenter0), wfEngine, samplingInterval, metricsOut);
 
@@ -358,9 +390,7 @@ public class ExternalSchedulerExample {
 //            List<Cloudlet> outCloudlets = wfPlanner.getTaskList()
             CloudSim.stopSimulation();
             printJobList(outputList0);
-            String FS = "local";
-            if (sharedFS) FS = "shared";
-            writeTraceCsv(outputList0, vmlist0, Paths.get("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\SimOutput\\traces\\"+ outTraceName + "_" + FS + ".csv"));
+            writeTraceCsv(outputList0, vmlist0, Paths.get("C:\\Users\\lukas\\IdeaProjects\\WorkflowSim-1.0\\CWSExperiments\\"+folder+"\\traces\\"+ outTraceName + ".csv"));
             HttpRunner localRunner = new HttpRunner("./traces/APICalls/" + "scheduling-000000.json", true);
             localRunner.resetCluster();
             ExternalSchedulingAlgorithm.reset();
@@ -438,11 +468,6 @@ public class ExternalSchedulerExample {
         return datacenter;
     }
 
-    /**
-     * Prints the job objects
-     *
-     * @param list list of jobs
-     */
     protected static void printJobList(List<Job> list) {
         String indent = "    ";
         Log.printLine();
@@ -476,21 +501,7 @@ public class ExternalSchedulerExample {
             }
         }
     }
-    /**
-     * Exportiert eine Nextflow-ähnliche trace.csv mit möglichst vielen aus der
-     * Simulation ablesbaren Metriken.
-     *
-     * Belegte Spalten: task_id, hostname, name, status, exit, cpus, attempt,
-     * submit, start, complete, duration, realtime.
-     * Nicht simulierte Felder werden als "-" ausgegeben.
-     *
-     * Beispiel-Aufruf nach Simulationsende:
-     *   writeTraceCsv(jobs, vmlist, java.nio.file.Paths.get("./traces/sim_trace.csv"));
-     *
-     * @param jobs  Liste der simulierten Jobs (Cloudlets)
-     * @param vms   Liste der VMs aus der Simulation
-     * @param out   Zielpfad für die CSV
-     */
+
     public static void writeTraceCsv(List<Job> jobs, List<CondorVM> vms, Path out) throws IOException {
         if (jobs == null) jobs = Collections.emptyList();
         if (vms == null) vms = Collections.emptyList();
